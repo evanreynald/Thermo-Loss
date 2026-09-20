@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CalculationInputs, CalculationResults, DuctMaterial, InsulationMaterial } from '../types';
 import { Language } from '../utils/translations';
-import { Layers, Eye, Camera, Flame } from 'lucide-react';
+import { Layers, Eye, Camera, Flame, Shapes } from 'lucide-react';
 
 interface Props {
   lang: Language;
@@ -542,6 +542,14 @@ export const CanvasCrossSection: React.FC<Props> = ({
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+      {/* Section title */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-800">
+        <Shapes className="w-4 h-4 text-brand-400" />
+        <h3 className="text-sm font-semibold text-white">
+          {tr('Visualisasi Penampang Ducting', 'Duct Cross-Section Visualization')}
+        </h3>
+      </div>
+
       {/* Header controls */}
       <div className="flex flex-wrap items-center justify-between px-4 py-2.5 bg-slate-950 border-b border-slate-800 gap-2">
         <div className="flex items-center gap-2">
