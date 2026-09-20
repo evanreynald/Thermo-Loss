@@ -1,6 +1,6 @@
 import React from 'react';
 import { CalculationInputs, CalculationResults, DuctMaterial } from '../types';
-import { Language, UnitSystem, translations } from '../utils/translations';
+import { Language, UnitSystem, translations, getSafetyStatusMessage } from '../utils/translations';
 import { unitHelpers } from '../utils/unitConversion';
 import {
   Flame,
@@ -15,6 +15,28 @@ import {
   Activity,
   Wrench,
 } from 'lucide-react';
+
+type DiagnosticResult = NonNullable<CalculationResults['diagnostic']>;
+
+const CONDITION_LABELS_EN: Record<DiagnosticResult['condition'], string> = {
+  'Optimal': 'Optimal',
+  'Degradasi Ringan': 'Minor Degradation',
+  'Degradasi Sedang': 'Moderate Degradation',
+  'Kerusakan Kritis / Hotspot': 'Critical Damage / Hotspot',
+};
+
+const DUCT_INTEGRITY_LABELS_EN: Record<DiagnosticResult['ductIntegrityStatus'], string> = {
+  'Aman & Optimal': 'Safe & Optimal',
+  'Penipisan Ringan': 'Minor Thinning',
+  'Waspada Penipisan Kritis': 'Critical Thinning Warning',
+  'Di Bawah Tebal Minimum ASME/SMACNA': 'Below ASME/SMACNA Minimum Thickness',
+};
+
+const tr_condition = (value: DiagnosticResult['condition'], lang: Language) =>
+  lang === 'id' ? value : CONDITION_LABELS_EN[value];
+
+const tr_ductIntegrity = (value: DiagnosticResult['ductIntegrityStatus'], lang: Language) =>
+  lang === 'id' ? value : DUCT_INTEGRITY_LABELS_EN[value];
 
 interface Props {
   inputs: CalculationInputs;
@@ -44,13 +66,20 @@ export const ResultsDashboard: React.FC<Props> = ({
   return (
     <div className="space-y-4">
       {/* Action Banner with PDF Export Button */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl p-4">
-        <div>
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+       <div className="flex items-center gap-2 pb-3 border-b border-slate-800">
+         <FileDown className="w-4 h-4 text-brand-400" />
+         <h3 className="text-sm font-semibold text-white">
+           {lang === 'id' ? 'Laporan Teknis (PDF)' : 'Technical Report (PDF)'}
+         </h3>
+       </div>
+       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1.5 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                 isDesign
-                  ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                  ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30'
                   : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
               }`}
             >
@@ -66,30 +95,28 @@ export const ResultsDashboard: React.FC<Props> = ({
                 {lang === 'id' ? `TERISOLASI (${inputs.layers.length} LAPIS)` : `INSULATED (${inputs.layers.length} LAYERS)`}
               </span>
             )}
-
-            <span className="text-xs text-slate-400">
-              {inputs.hasInsulation === false
-                ? (lang === 'id' ? 'Analisa termal dan rugi energi pada pipa telanjang tanpa isolasi' : 'Thermal analysis & energy loss on uninsulated bare duct')
-                : isDesign
-                ? t.designDesc
-                : t.diagnoseDesc}
-            </span>
           </div>
+
+          <p className="text-xs text-slate-400 leading-relaxed">
+            {inputs.hasInsulation === false
+              ? (lang === 'id' ? 'Analisa termal dan rugi energi pada pipa telanjang tanpa isolasi' : 'Thermal analysis & energy loss on uninsulated bare duct')
+              : isDesign
+              ? t.designDesc
+              : t.diagnoseDesc}
+          </p>
         </div>
 
         <button
           type="button"
           id="btn-export-pdf"
           onClick={onExportPDF}
-          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold rounded-xl shadow-md transition-all active:scale-95"
-          title="Ekspor Laporan PDF Lengkap (100% Gratis)"
+          className="shrink-0 flex items-center justify-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold rounded-lg transition-colors active:scale-95"
+          title={lang === 'id' ? 'Ekspor Laporan PDF Lengkap (100% Gratis)' : 'Export Full PDF Report (100% Free)'}
         >
           <FileDown className="w-4 h-4" />
           <span>{t.exportPdf}</span>
-          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-            {lang === 'id' ? 'Akses Penuh' : 'Full Access'}
-          </span>
         </button>
+       </div>
       </div>
 
       {/* Primary KPI Metric Cards (3 Main Outputs Requested by User) */}
@@ -177,7 +204,7 @@ export const ResultsDashboard: React.FC<Props> = ({
               <span className="text-xs text-slate-400 ml-auto">
                 {results.outerSurfaceTempC <= (inputs.targetOuterTempC || 60) ? (
                   <span className="text-emerald-400 font-semibold">
-                    ✓ Aman (≤ {inputs.targetOuterTempC || 60}°C)
+                    ✓ {lang === 'id' ? 'Aman' : 'Safe'} (≤ {inputs.targetOuterTempC || 60}°C)
                   </span>
                 ) : (
                   <span className="text-red-400 font-semibold">
@@ -282,16 +309,16 @@ export const ResultsDashboard: React.FC<Props> = ({
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-blue-400" />
+              <ShieldCheck className="w-4 h-4 text-brand-400" />
               {t.ductShellThickness}
             </span>
-            <span className="text-[10px] px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded-full border border-blue-500/20">
+            <span className="text-[10px] px-2 py-0.5 bg-brand-500/10 text-brand-400 rounded-full border border-brand-500/20">
               ASME / SMACNA
             </span>
           </div>
 
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-blue-300 tracking-tight">
+            <span className="text-2xl font-bold text-brand-300 tracking-tight">
               {unitSystem === 'imperial'
                 ? (results.recommendedDuctThicknessMm / 25.4).toFixed(2)
                 : results.recommendedDuctThicknessMm}
@@ -306,7 +333,7 @@ export const ResultsDashboard: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => onApplyRecommendedDuctThickness(results.recommendedDuctThicknessMm)}
-                className="ml-auto text-[11px] text-blue-400 hover:text-blue-300 underline font-medium"
+                className="ml-auto text-[11px] text-brand-400 hover:text-brand-300 underline font-medium"
               >
                 {lang === 'id' ? 'Sesuaikan' : 'Adjust'}
               </button>
@@ -362,13 +389,15 @@ export const ResultsDashboard: React.FC<Props> = ({
                   : t.burnHazard}
               </span>
             </div>
-            <p className="text-xs opacity-90 mt-0.5">{results.statusMessage}</p>
+            <p className="text-xs opacity-90 mt-0.5">
+              {getSafetyStatusMessage(results.personnelProtectionStatus, results.outerSurfaceTempC, lang)}
+            </p>
           </div>
         </div>
 
         <div className="text-right text-xs opacity-80 shrink-0">
           <div>{lang === 'id' ? 'Standar Perlindungan Personil: ASTM C1055' : 'Personnel Protection Standard: ASTM C1055'}</div>
-          <div>Batas Maksimum Aman Kerja: ≤ 60°C</div>
+          <div>{lang === 'id' ? 'Batas Maksimum Aman Kerja: ≤ 60°C' : 'Max Safe Working Limit: ≤ 60°C'}</div>
         </div>
       </div>
 
@@ -380,10 +409,14 @@ export const ResultsDashboard: React.FC<Props> = ({
               <Activity className="w-5 h-5 text-amber-400" />
               <div>
                 <h4 className="text-sm font-bold text-white">
-                  Laporan Diagnosa Lapangan: Keausan, Efektivitas & Kebutuhan Isolasi
+                  {lang === 'id'
+                    ? 'Laporan Diagnosa Lapangan: Keausan, Efektivitas & Kebutuhan Isolasi'
+                    : 'Field Diagnostic Report: Wear, Effectiveness & Insulation Needs'}
                 </h4>
                 <p className="text-[11px] text-slate-400">
-                  Berdasarkan perbandingan temperatur permukaan terukur ({inputs.measuredOuterTempC}°C) terhadap model termodinamika teoritis
+                  {lang === 'id'
+                    ? `Berdasarkan perbandingan temperatur permukaan terukur (${inputs.measuredOuterTempC}°C) terhadap model termodinamika teoritis`
+                    : `Based on comparing the measured surface temperature (${inputs.measuredOuterTempC}°C) against the theoretical thermodynamic model`}
                 </p>
               </div>
             </div>
@@ -396,7 +429,7 @@ export const ResultsDashboard: React.FC<Props> = ({
                   : 'bg-red-500/20 text-red-300 border border-red-500/30 animate-pulse'
               }`}
             >
-              Status: {results.diagnostic.condition}
+              Status: {tr_condition(results.diagnostic.condition, lang)}
             </span>
           </div>
 
@@ -407,38 +440,38 @@ export const ResultsDashboard: React.FC<Props> = ({
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5" />
-                  1. Keausan & Efektivitas Isolasi
+                  1. {lang === 'id' ? 'Keausan & Efektivitas Isolasi' : 'Insulation Wear & Effectiveness'}
                 </span>
                 <span className="text-[10px] text-slate-400">Lining / Blanket</span>
               </div>
 
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">Tingkat Keausan / Degradasi:</span>
+                  <span className="text-slate-400">{lang === 'id' ? 'Tingkat Keausan / Degradasi:' : 'Wear / Degradation Level:'}</span>
                   <strong className={`font-mono ${results.diagnostic.insulationWearPercent > 30 ? 'text-amber-400 font-bold' : 'text-slate-200'}`}>
                     {results.diagnostic.insulationWearPercent}%
                   </strong>
                 </div>
 
                 <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">Tebal Efektif Lapangan:</span>
+                  <span className="text-slate-400">{lang === 'id' ? 'Tebal Efektif Lapangan:' : 'Field Effective Thickness:'}</span>
                   <strong className="text-slate-200 font-mono">
                     {results.diagnostic.effectiveThicknessMm} mm{' '}
                     <span className="text-[10px] text-slate-500 font-normal">
-                      (dari {inputs.layers.reduce((s, l) => s + l.thicknessMm, 0)} mm)
+                      ({lang === 'id' ? 'dari' : 'of'} {inputs.layers.reduce((s, l) => s + l.thicknessMm, 0)} mm)
                     </span>
                   </strong>
                 </div>
 
                 <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">Efisiensi Tahan Panas vs Bare:</span>
+                  <span className="text-slate-400">{lang === 'id' ? 'Efisiensi Tahan Panas vs Bare:' : 'Heat Retention Efficiency vs Bare:'}</span>
                   <strong className="text-emerald-400 font-mono">
                     {results.diagnostic.insulationEfficiencyPercent}%
                   </strong>
                 </div>
 
                 <div className="flex justify-between items-center pt-0.5">
-                  <span className="text-slate-400">Daya Panas Ditahan:</span>
+                  <span className="text-slate-400">{lang === 'id' ? 'Daya Panas Ditahan:' : 'Heat Power Retained:'}</span>
                   <span className="text-slate-300 font-mono">
                     {results.diagnostic.heatLossSavedKW} kW
                   </span>
@@ -449,16 +482,16 @@ export const ResultsDashboard: React.FC<Props> = ({
             {/* Card B: Keausan Material Ducting Shell */}
             <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-blue-300 flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-brand-300 flex items-center gap-1.5">
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  2. Keausan Material Plat Ducting
+                  2. {lang === 'id' ? 'Keausan Material Plat Ducting' : 'Ducting Plate Material Wear'}
                 </span>
                 <span className="text-[10px] text-slate-400">ASME / SMACNA</span>
               </div>
 
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">Status Integritas Plat:</span>
+                  <span className="text-slate-400">{lang === 'id' ? 'Status Integritas Plat:' : 'Plate Integrity Status:'}</span>
                   <strong
                     className={`font-mono text-[11px] ${
                       results.diagnostic.ductIntegrityStatus === 'Aman & Optimal'
@@ -468,26 +501,26 @@ export const ResultsDashboard: React.FC<Props> = ({
                         : 'text-red-400 font-bold'
                     }`}
                   >
-                    {results.diagnostic.ductIntegrityStatus}
+                    {tr_ductIntegrity(results.diagnostic.ductIntegrityStatus, lang)}
                   </strong>
                 </div>
 
                 <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">Tebal Aktual vs Rekomendasi:</span>
+                  <span className="text-slate-400">{lang === 'id' ? 'Tebal Aktual vs Rekomendasi:' : 'Actual vs Recommended Thickness:'}</span>
                   <strong className="text-slate-200 font-mono">
                     {inputs.ductThicknessMm} mm vs {results.recommendedDuctThicknessMm} mm
                   </strong>
                 </div>
 
                 <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">Sisa Toleransi Korosi:</span>
+                  <span className="text-slate-400">{lang === 'id' ? 'Sisa Toleransi Korosi:' : 'Remaining Corrosion Allowance:'}</span>
                   <strong className="text-slate-200 font-mono">
                     {results.diagnostic.remainingCorrosionAllowanceMm} mm
                   </strong>
                 </div>
 
                 <div className="flex justify-between items-center pt-0.5">
-                  <span className="text-slate-400">Safety Factor Struktural:</span>
+                  <span className="text-slate-400">{lang === 'id' ? 'Safety Factor Struktural:' : 'Structural Safety Factor:'}</span>
                   <span
                     className={`font-mono font-bold ${
                       results.ductSafetyFactor >= 1.0 ? 'text-emerald-400' : 'text-red-400'
@@ -504,14 +537,14 @@ export const ResultsDashboard: React.FC<Props> = ({
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5" />
-                  3. Kebutuhan Isolasi Termal
+                  3. {lang === 'id' ? 'Kebutuhan Isolasi Termal' : 'Thermal Insulation Need'}
                 </span>
-                <span className="text-[10px] text-slate-400">Audit Keputusan</span>
+                <span className="text-[10px] text-slate-400">{lang === 'id' ? 'Audit Keputusan' : 'Decision Audit'}</span>
               </div>
 
               <div className="space-y-2 text-xs">
                 <div>
-                  <span className="text-slate-400 block text-[10px]">STATUS URGENSI:</span>
+                  <span className="text-slate-400 block text-[10px]">{lang === 'id' ? 'STATUS URGENSI:' : 'URGENCY STATUS:'}</span>
                   <span
                     className={`inline-block mt-0.5 px-2 py-0.5 rounded text-[11px] font-bold ${
                       results.diagnostic.insulationUrgency.includes('WAJIB')
@@ -531,13 +564,13 @@ export const ResultsDashboard: React.FC<Props> = ({
 
                 {results.diagnostic.isInsulationNeeded && (
                   <div className="pt-1 flex items-center justify-between">
-                    <span className="text-slate-400 text-[11px]">Rekomendasi Tebal Baru:</span>
+                    <span className="text-slate-400 text-[11px]">{lang === 'id' ? 'Rekomendasi Tebal Baru:' : 'New Thickness Recommendation:'}</span>
                     <button
                       type="button"
                       onClick={() => onApplyRecommendedThickness(results.recommendedInsulationThicknessMm)}
                       className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded text-[11px] font-semibold transition-all active:scale-95"
                     >
-                      Terapkan {results.recommendedInsulationThicknessMm} mm
+                      {lang === 'id' ? 'Terapkan' : 'Apply'} {results.recommendedInsulationThicknessMm} mm
                     </button>
                   </div>
                 )}
@@ -549,7 +582,7 @@ export const ResultsDashboard: React.FC<Props> = ({
           <div className="bg-slate-950/50 p-3 rounded-lg border border-slate-800/80 space-y-1 text-xs">
             <span className="font-semibold text-slate-300 flex items-center gap-1.5">
               <Wrench className="w-3.5 h-3.5 text-slate-400" />
-              Rekomendasi Tindakan Lapangan & Rencana Perbaikan:
+              {lang === 'id' ? 'Rekomendasi Tindakan Lapangan & Rencana Perbaikan:' : 'Recommended Field Actions & Repair Plan:'}
             </span>
             <ul className="list-disc pl-5 space-y-1 text-slate-400 pt-1">
               {results.diagnostic.recommendations.map((rec, i) => (
@@ -564,8 +597,8 @@ export const ResultsDashboard: React.FC<Props> = ({
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <h4 className="text-sm font-semibold text-white flex items-center gap-1.5">
-            <Layers className="w-4 h-4 text-blue-400" />
-            Distribusi Temperatur Antar-Lapisan (Gradient Profile)
+            <Layers className="w-4 h-4 text-brand-400" />
+            {lang === 'id' ? 'Distribusi Temperatur Antar-Lapisan (Gradient Profile)' : 'Inter-Layer Temperature Distribution (Gradient Profile)'}
           </h4>
           <span className="text-xs text-slate-400">
             T_Fluida = {inputs.fluidTempC}°C | T_Ambient = {inputs.ambientTempC}°C
@@ -576,13 +609,13 @@ export const ResultsDashboard: React.FC<Props> = ({
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-slate-800 text-slate-400 bg-slate-950/60">
-                <th className="py-2.5 px-3">Lapisan</th>
-                <th className="py-2.5 px-3">Posisi</th>
-                <th className="py-2.5 px-3 text-right">Tebal (mm)</th>
-                <th className="py-2.5 px-3 text-right">T. Dalam (°C)</th>
-                <th className="py-2.5 px-3 text-right">T. Luar (°C)</th>
+                <th className="py-2.5 px-3">{lang === 'id' ? 'Lapisan' : 'Layer'}</th>
+                <th className="py-2.5 px-3">{lang === 'id' ? 'Posisi' : 'Position'}</th>
+                <th className="py-2.5 px-3 text-right">{lang === 'id' ? 'Tebal (mm)' : 'Thickness (mm)'}</th>
+                <th className="py-2.5 px-3 text-right">{lang === 'id' ? 'T. Dalam (°C)' : 'T. Inner (°C)'}</th>
+                <th className="py-2.5 px-3 text-right">{lang === 'id' ? 'T. Luar (°C)' : 'T. Outer (°C)'}</th>
                 <th className="py-2.5 px-3 text-right">Drop ΔT (°C)</th>
-                <th className="py-2.5 px-3 text-center">Status Batas Suhu</th>
+                <th className="py-2.5 px-3 text-center">{lang === 'id' ? 'Status Batas Suhu' : 'Temp Limit Status'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
@@ -598,11 +631,11 @@ export const ResultsDashboard: React.FC<Props> = ({
                     </td>
                     <td className="py-2 px-3 text-slate-400">
                       {lyr.position === 'inside' ? (
-                        <span className="text-amber-400">Refraktori Dalam</span>
+                        <span className="text-amber-400">{lang === 'id' ? 'Refraktori Dalam' : 'Inner Refractory'}</span>
                       ) : lyr.position === 'duct_wall' ? (
-                        <span className="text-slate-300">Shell Plat Baja</span>
+                        <span className="text-slate-300">{lang === 'id' ? 'Shell Plat Baja' : 'Steel Shell Plate'}</span>
                       ) : (
-                        <span className="text-blue-400">Isolasi Luar</span>
+                        <span className="text-brand-400">{lang === 'id' ? 'Isolasi Luar' : 'Outer Insulation'}</span>
                       )}
                     </td>
                     <td className="py-2 px-3 text-right font-mono text-slate-200">
@@ -624,7 +657,7 @@ export const ResultsDashboard: React.FC<Props> = ({
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded">
-                          <CheckCircle2 className="w-3 h-3" /> Aman (Maks {lyr.maxServiceTempC}°C)
+                          <CheckCircle2 className="w-3 h-3" /> {lang === 'id' ? 'Aman' : 'Safe'} ({lang === 'id' ? 'Maks' : 'Max'} {lyr.maxServiceTempC}°C)
                         </span>
                       )}
                     </td>

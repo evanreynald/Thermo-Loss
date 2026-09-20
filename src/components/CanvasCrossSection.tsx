@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CalculationInputs, CalculationResults, DuctMaterial, InsulationMaterial } from '../types';
+import { Language } from '../utils/translations';
 import { Layers, Eye, Camera, Flame } from 'lucide-react';
 
 interface Props {
+  lang: Language;
   inputs: CalculationInputs;
   results: CalculationResults;
   ductMaterials: DuctMaterial[];
@@ -11,14 +13,18 @@ interface Props {
 }
 
 export const CanvasCrossSection: React.FC<Props> = ({
+  lang,
   inputs,
   results,
   ductMaterials,
   onCanvasReady,
 }) => {
+  const tr = (id: string, en: string) => (lang === 'id' ? id : en);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeTab, setActiveTab] = useState<'cross' | 'side'>('cross');
   const [showThermalGradient, setShowThermalGradient] = useState<boolean>(true);
+  const rotationAngleRef = useRef<number>(0);
+  const rafIdRef = useRef<number | null>(null);
 
   const ductMat = ductMaterials.find((m) => m.id === inputs.ductMaterialId) || ductMaterials[0];
 
@@ -43,14 +49,35 @@ export const CanvasCrossSection: React.FC<Props> = ({
     canvas.height = height * dpr;
     ctx.scale(dpr, dpr);
 
-    ctx.clearRect(0, 0, width, height);
+    const render = () => {
+      ctx.clearRect(0, 0, width, height);
+      if (activeTab === 'cross') {
+        drawCrossSection(ctx, width, height, rotationAngleRef.current);
+      } else {
+        drawSideView(ctx, width, height);
+      }
+    };
 
-    if (activeTab === 'cross') {
-      drawCrossSection(ctx, width, height);
+    const isRotatingKiln = inputs.shape === 'kiln' && activeTab === 'cross';
+
+    if (isRotatingKiln) {
+      const animate = () => {
+        rotationAngleRef.current += 0.012;
+        render();
+        rafIdRef.current = requestAnimationFrame(animate);
+      };
+      rafIdRef.current = requestAnimationFrame(animate);
     } else {
-      drawSideView(ctx, width, height);
+      render();
     }
-  }, [inputs, results, activeTab, showThermalGradient]);
+
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
+  }, [inputs, results, activeTab, showThermalGradient, lang]);
 
   // Download snapshot
   const downloadSnapshot = () => {
@@ -62,10 +89,11 @@ export const CanvasCrossSection: React.FC<Props> = ({
     link.click();
   };
 
-  const drawCrossSection = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+  const drawCrossSection = (ctx: CanvasRenderingContext2D, width: number, height: number, rotationAngle: number = 0) => {
     const centerX = width / 2;
     const centerY = height / 2 + 10;
     const isCylinder = inputs.shape === 'cylindrical' || inputs.shape === 'kiln';
+    const isRotatingKiln = inputs.shape === 'kiln';
 
     // Calculate maximum dimension for autoscaling
     let totalMaxDimensionMm = 0;
@@ -146,8 +174,8 @@ export const CanvasCrossSection: React.FC<Props> = ({
         ctx.strokeStyle = '#94a3b8';
         ctx.stroke();
 
-        // Cross-hatch insulation pattern
-        drawRadialHatch(ctx, centerX, centerY, currentR_px - thick_px, currentR_px, '#475569');
+        // Cross-hatch insulation pattern (rotates with the shell for a kiln)
+        drawRadialHatch(ctx, centerX, centerY, currentR_px - thick_px, currentR_px, '#475569', isRotatingKiln ? rotationAngle : 0);
 
         currentR_px -= thick_px;
       }
@@ -165,6 +193,11 @@ export const CanvasCrossSection: React.FC<Props> = ({
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#e2e8f0';
       ctx.stroke();
+
+      // Rotating rivet marks on the shell, to visually convey the kiln spinning
+      if (isRotatingKiln) {
+        drawShellRotationMarks(ctx, centerX, centerY, currentR_px - ductThick_px / 2, rotationAngle);
+      }
 
       currentR_px -= ductThick_px;
 
@@ -292,13 +325,14 @@ export const CanvasCrossSection: React.FC<Props> = ({
     cy: number,
     rIn: number,
     rOut: number,
-    color: string
+    color: string,
+    angleOffset: number = 0
   ) => {
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
     const numLines = 36;
     for (let i = 0; i < numLines; i++) {
-      const angle = (i * 2 * Math.PI) / numLines;
+      const angle = (i * 2 * Math.PI) / numLines + angleOffset;
       const x1 = cx + rIn * Math.cos(angle);
       const y1 = cy + rIn * Math.sin(angle);
       const x2 = cx + rOut * Math.cos(angle + 0.1);
@@ -306,6 +340,28 @@ export const CanvasCrossSection: React.FC<Props> = ({
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+  };
+
+  const drawShellRotationMarks = (
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    radius: number,
+    angleOffset: number
+  ) => {
+    const numMarks = 10;
+    for (let i = 0; i < numMarks; i++) {
+      const angle = (i * 2 * Math.PI) / numMarks + angleOffset;
+      const x = cx + radius * Math.cos(angle);
+      const y = cy + radius * Math.sin(angle);
+      ctx.beginPath();
+      ctx.arc(x, y, 2.2, 0, 2 * Math.PI);
+      ctx.fillStyle = '#1e293b';
+      ctx.fill();
+      ctx.strokeStyle = '#f1f5f9';
+      ctx.lineWidth = 1;
       ctx.stroke();
     }
   };
@@ -340,7 +396,11 @@ export const CanvasCrossSection: React.FC<Props> = ({
       ctx.fillStyle = '#fbbf24';
       ctx.font = 'bold 11px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('⚠ BARE DUCT / PIPA TELANJANG (TANPA ISOLASI)', startX + ductLengthPx / 2, centerY - ductHeightPx / 2 - 14);
+      ctx.fillText(
+        tr('⚠ BARE DUCT / PIPA TELANJANG (TANPA ISOLASI)', '⚠ BARE DUCT / BARE PIPE (UNINSULATED)'),
+        startX + ductLengthPx / 2,
+        centerY - ductHeightPx / 2 - 14
+      );
     }
 
     // Duct Shell
@@ -378,9 +438,9 @@ export const CanvasCrossSection: React.FC<Props> = ({
     ctx.fillStyle = '#94a3b8';
     ctx.font = '11px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(`Panjang L = ${inputs.lengthM} m`, startX + ductLengthPx / 2, centerY + ductHeightPx / 2 + insThickPx + 35);
+    ctx.fillText(`${tr('Panjang L', 'Length L')} = ${inputs.lengthM} m`, startX + ductLengthPx / 2, centerY + ductHeightPx / 2 + insThickPx + 35);
     ctx.fillText(
-      `Kehilangan Panas Total: ${(results.heatLossTotalW / 1000).toFixed(2)} kW | Flux: ${results.heatFluxWm2} W/m²`,
+      `${tr('Kehilangan Panas Total', 'Total Heat Loss')}: ${(results.heatLossTotalW / 1000).toFixed(2)} kW | Flux: ${results.heatFluxWm2} W/m²`,
       startX + ductLengthPx / 2,
       25
     );
@@ -435,7 +495,7 @@ export const CanvasCrossSection: React.FC<Props> = ({
     ctx.fillStyle = '#94a3b8';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('STATUS SUHU PERMUKAAN', 18, 24);
+    ctx.fillText(tr('STATUS SUHU PERMUKAAN', 'SURFACE TEMPERATURE STATUS'), 18, 24);
 
     ctx.font = 'bold 16px monospace';
     ctx.fillStyle =
@@ -448,7 +508,13 @@ export const CanvasCrossSection: React.FC<Props> = ({
 
     ctx.font = '10px sans-serif';
     ctx.fillStyle = hasInsulation ? '#38bdf8' : '#fb923c';
-    ctx.fillText(hasInsulation ? `Sistem: Terisolasi (${inputs.layers.length} Lapis)` : `Sistem: Bare Duct (Tanpa Isolasi)`, 18, 59);
+    ctx.fillText(
+      hasInsulation
+        ? tr(`Sistem: Terisolasi (${inputs.layers.length} Lapis)`, `System: Insulated (${inputs.layers.length} Layers)`)
+        : tr('Sistem: Bare Duct (Tanpa Isolasi)', 'System: Bare Duct (Uninsulated)'),
+      18,
+      59
+    );
 
     ctx.font = '11px sans-serif';
     ctx.fillStyle = '#cbd5e1';
@@ -464,12 +530,12 @@ export const CanvasCrossSection: React.FC<Props> = ({
 
     ctx.fillStyle = '#94a3b8';
     ctx.font = '10px sans-serif';
-    ctx.fillText('TEMPERATUR LAPISAN', rightX, 25);
+    ctx.fillText(tr('TEMPERATUR LAPISAN', 'LAYER TEMPERATURE'), rightX, 25);
 
     results.layerResults.forEach((lyr, idx) => {
       ctx.font = '10px monospace';
       ctx.fillStyle = lyr.isOverheating ? '#ef4444' : '#38bdf8';
-      const label = lyr.position === 'duct_wall' ? 'Plat Baja' : lyr.name.slice(0, 12);
+      const label = lyr.position === 'duct_wall' ? tr('Plat Baja', 'Steel Plate') : lyr.name.slice(0, 12);
       ctx.fillText(`${label}: ${lyr.tOuterC.toFixed(0)}°C`, rightX, 42 + idx * 18);
     });
   };
@@ -490,7 +556,7 @@ export const CanvasCrossSection: React.FC<Props> = ({
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            Tampak Melintang (Cross-Section)
+            {tr('Tampak Melintang (Cross-Section)', 'Cross-Section View')}
           </button>
           <button
             type="button"
@@ -503,7 +569,7 @@ export const CanvasCrossSection: React.FC<Props> = ({
             }`}
           >
             <Eye className="w-3.5 h-3.5" />
-            Tampak Samping (Profil Panjang)
+            {tr('Tampak Samping (Profil Panjang)', 'Side View (Length Profile)')}
           </button>
         </div>
 
@@ -518,10 +584,10 @@ export const CanvasCrossSection: React.FC<Props> = ({
                   ? 'border-amber-500/50 bg-amber-500/10 text-amber-300'
                   : 'border-slate-700 bg-slate-800 text-slate-400'
               }`}
-              title="Aktifkan/nonaktifkan gradasi kontur termal"
+              title={tr('Aktifkan/nonaktifkan gradasi kontur termal', 'Toggle thermal contour gradient')}
             >
               <Flame className="w-3.5 h-3.5" />
-              Kontur Termal {showThermalGradient ? 'ON' : 'OFF'}
+              {tr('Kontur Termal', 'Thermal Contour')} {showThermalGradient ? 'ON' : 'OFF'}
             </button>
           )}
 
@@ -530,10 +596,10 @@ export const CanvasCrossSection: React.FC<Props> = ({
             id="btn-download-canvas"
             onClick={downloadSnapshot}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
-            title="Download gambar canvas format PNG"
+            title={tr('Download gambar canvas format PNG', 'Download canvas image as PNG')}
           >
             <Camera className="w-3.5 h-3.5" />
-            Simpan PNG
+            {tr('Simpan PNG', 'Save PNG')}
           </button>
         </div>
       </div>
@@ -550,21 +616,21 @@ export const CanvasCrossSection: React.FC<Props> = ({
       {/* Footer dimension details */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-4 py-2 bg-slate-950/80 border-t border-slate-800 text-[11px] text-slate-400">
         <div>
-          <span className="text-slate-500">Material Shell:</span>{' '}
+          <span className="text-slate-500">{tr('Material Shell:', 'Shell Material:')}</span>{' '}
           <span className="text-slate-200 font-medium">{ductMat.name.split('(')[0]}</span>
         </div>
         <div>
-          <span className="text-slate-500">Tebal Plat Shell:</span>{' '}
+          <span className="text-slate-500">{tr('Tebal Plat Shell:', 'Shell Plate Thickness:')}</span>{' '}
           <span className="text-slate-200 font-medium">{inputs.ductThicknessMm} mm</span>
         </div>
         <div>
-          <span className="text-slate-500">Total Tebal Isolasi:</span>{' '}
+          <span className="text-slate-500">{tr('Total Tebal Isolasi:', 'Total Insulation Thickness:')}</span>{' '}
           <span className="text-slate-200 font-medium">
             {inputs.layers.reduce((sum, l) => sum + l.thicknessMm, 0)} mm
           </span>
         </div>
         <div>
-          <span className="text-slate-500">Korelasi Aliran:</span>{' '}
+          <span className="text-slate-500">{tr('Korelasi Aliran:', 'Flow Correlation:')}</span>{' '}
           <span className="text-slate-200 font-medium">
             {results.flowType} (Re = {results.reynoldsNumber.toLocaleString()})
           </span>

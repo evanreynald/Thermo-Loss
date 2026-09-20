@@ -1,6 +1,30 @@
 export type Language = 'id' | 'en';
 export type UnitSystem = 'metric' | 'imperial';
 
+// The calculation engine's `statusMessage` is baked in Indonesian and driven entirely by
+// `personnelProtectionStatus` + the surface temperature — just 3 fixed templates, no free-form
+// text. Rebuilding it here from those two fields lets both the on-screen UI and the PDF export
+// show a properly localized message without touching thermalCalculations.ts.
+export function getSafetyStatusMessage(
+  status: 'safe' | 'warning' | 'danger',
+  surfaceTempC: number,
+  lang: Language
+): string {
+  if (status === 'danger') {
+    return lang === 'id'
+      ? `BAHAYA LUKA BAKAR: Suhu permukaan ${surfaceTempC.toFixed(1)}°C melebihi batas aman ASTM C1055 (>60°C). Risiko cedera personil!`
+      : `BURN HAZARD: Surface temperature ${surfaceTempC.toFixed(1)}°C exceeds the ASTM C1055 safe limit (>60°C). Personnel injury risk!`;
+  }
+  if (status === 'warning') {
+    return lang === 'id'
+      ? `PERINGATAN: Suhu permukaan ${surfaceTempC.toFixed(1)}°C mendekati batas kritis personil (60°C). Dianjurkan penambahan tebal isolasi.`
+      : `WARNING: Surface temperature ${surfaceTempC.toFixed(1)}°C is approaching the personnel-critical limit (60°C). Additional insulation thickness recommended.`;
+  }
+  return lang === 'id'
+    ? 'Temperatur permukaan luar aman disentuh (< 60°C).'
+    : 'Outer surface temperature is safe to touch (< 60°C).';
+}
+
 export interface Translations {
   appName: string;
   appSubtitle: string;

@@ -28,6 +28,7 @@ export const WallTemperatureProfileChart: React.FC<Props> = ({
   unitSystem,
 }) => {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
+  const diagramRef = useRef<HTMLDivElement | null>(null);
   const [hoveredLayerIndex, setHoveredLayerIndex] = useState<number | null>(null);
 
   const units = unitHelpers.getUnits(unitSystem);
@@ -116,7 +117,7 @@ export const WallTemperatureProfileChart: React.FC<Props> = ({
 
   // Export diagram to PNG
   const handleDownloadPNG = () => {
-    const svgEl = chartContainerRef.current?.querySelector('svg');
+    const svgEl = diagramRef.current?.querySelector('svg');
     if (!svgEl) return;
 
     const svgData = new XMLSerializer().serializeToString(svgEl);
@@ -190,7 +191,10 @@ export const WallTemperatureProfileChart: React.FC<Props> = ({
       </div>
 
       {/* SVG Diagram Canvas */}
-      <div className="relative w-full bg-slate-950/80 rounded-xl border border-slate-800 p-2 overflow-x-auto">
+      <div
+        ref={diagramRef}
+        className="relative w-full bg-slate-950/80 rounded-xl border border-slate-800 p-2 overflow-x-auto"
+      >
         <svg
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
           className="w-full h-auto max-h-[460px] min-w-[620px] select-none font-sans"
@@ -542,10 +546,10 @@ export const WallTemperatureProfileChart: React.FC<Props> = ({
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] font-semibold border-b border-slate-800">
               <tr>
-                <th className="px-3 py-2">Row / Posisi</th>
+                <th className="px-3 py-2">{lang === 'id' ? 'Row / Posisi' : 'Row / Position'}</th>
                 <th className="px-3 py-2">Material</th>
-                <th className="px-3 py-2 text-right">Tebal [mm]</th>
-                <th className="px-3 py-2 text-center">Suhu Antarmuka [°C]</th>
+                <th className="px-3 py-2 text-right">{lang === 'id' ? 'Tebal [mm]' : 'Thickness [mm]'}</th>
+                <th className="px-3 py-2 text-center">{lang === 'id' ? 'Suhu Antarmuka [°C]' : 'Interface Temp [°C]'}</th>
                 <th className="px-3 py-2 text-right">k [W/m·K]</th>
                 <th className="px-3 py-2 text-right">R [m²·K/W]</th>
                 <th className="px-3 py-2 text-center">Status</th>
@@ -555,7 +559,7 @@ export const WallTemperatureProfileChart: React.FC<Props> = ({
               {/* Internal Fluid to Inner Wall */}
               <tr className="bg-slate-950/40 text-slate-400 text-[11px]">
                 <td className="px-3 py-1.5 italic">Internal Gas Film</td>
-                <td className="px-3 py-1.5">Konveksi Internal Fluida (h_in: {results.internalConvectionHi} W/m²·K)</td>
+                <td className="px-3 py-1.5">{lang === 'id' ? 'Konveksi Internal Fluida' : 'Internal Fluid Convection'} (h_in: {results.internalConvectionHi} W/m²·K)</td>
                 <td className="px-3 py-1.5 text-right">-</td>
                 <td className="px-3 py-1.5 text-center font-mono">
                   {tFluid}°C → <strong className="text-red-400">{Math.round(tInnerWall)}°C</strong>
@@ -588,8 +592,8 @@ export const WallTemperatureProfileChart: React.FC<Props> = ({
                         {lyr.position === 'inside'
                           ? 'Refractory'
                           : lyr.position === 'duct_wall'
-                          ? 'Shell Plat'
-                          : 'Insulasi Luar'}
+                          ? (lang === 'id' ? 'Shell Plat' : 'Shell Plate')
+                          : (lang === 'id' ? 'Insulasi Luar' : 'Outer Insulation')}
                       </span>
                     </td>
                     <td className="px-3 py-2 font-semibold text-white">
@@ -618,7 +622,7 @@ export const WallTemperatureProfileChart: React.FC<Props> = ({
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          Aman
+                          {lang === 'id' ? 'Aman' : 'Safe'}
                         </span>
                       )}
                     </td>
@@ -630,7 +634,7 @@ export const WallTemperatureProfileChart: React.FC<Props> = ({
               <tr className="bg-slate-950/40 text-slate-400 text-[11px]">
                 <td className="px-3 py-1.5 italic">External Film</td>
                 <td className="px-3 py-1.5">
-                  Konveksi Luar + Radiasi (h_o: {results.externalConvectionHo} W/m²·K)
+                  {lang === 'id' ? 'Konveksi Luar + Radiasi' : 'External Convection + Radiation'} (h_o: {results.externalConvectionHo} W/m²·K)
                 </td>
                 <td className="px-3 py-1.5 text-right">-</td>
                 <td className="px-3 py-1.5 text-center font-mono">

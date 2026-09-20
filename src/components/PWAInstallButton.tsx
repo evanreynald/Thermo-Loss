@@ -23,7 +23,7 @@ export const PWAInstallButton: React.FC<Props> = ({ lang = 'id' }) => {
     return (
       <button
         onClick={install}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm transition-all active:scale-95 border border-blue-400/30"
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-500 rounded-lg shadow-sm transition-all active:scale-95 border border-brand-400/30"
         title={lang === 'id' ? 'Install ThermoDuct sebagai aplikasi native di HP / Desktop' : 'Install ThermoDuct as a native app on Mobile / Desktop'}
       >
         <Download className="w-3.5 h-3.5" />
@@ -49,7 +49,7 @@ export const PWAInstallButton: React.FC<Props> = ({ lang = 'id' }) => {
             <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-slate-700 p-5 shadow-2xl text-slate-200">
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Smartphone className="w-4 h-4 text-blue-400" />
+                  <Smartphone className="w-4 h-4 text-brand-400" />
                   {lang === 'id' ? 'Pasang di iPhone / iPad' : 'Install on iPhone / iPad'}
                 </h3>
                 <button
@@ -76,7 +76,7 @@ export const PWAInstallButton: React.FC<Props> = ({ lang = 'id' }) => {
               </p>
               <button
                 onClick={() => setShowIOSGuide(false)}
-                className="mt-4 w-full rounded-lg bg-blue-600 hover:bg-blue-500 py-2 text-xs font-semibold text-white transition"
+                className="mt-4 w-full rounded-lg bg-brand-600 hover:bg-brand-500 py-2 text-xs font-semibold text-white transition"
               >
                 {lang === 'id' ? 'Mengerti' : 'Got it'}
               </button>
@@ -100,7 +100,7 @@ export const PWAInstallButton: React.FC<Props> = ({ lang = 'id' }) => {
       className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-800 rounded-lg border border-slate-700/60 transition"
       title="PWA Ready"
     >
-      <Smartphone className="w-3.5 h-3.5 text-blue-400" />
+      <Smartphone className="w-3.5 h-3.5 text-brand-400" />
       <span>PWA Ready</span>
     </button>
   );

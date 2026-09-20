@@ -316,6 +316,19 @@ export function saveCustomDuctMaterial(material: DuctMaterial): DuctMaterial[] {
   }
 }
 
+export function deleteCustomDuctMaterial(materialId: string): DuctMaterial[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_DUCT_MATERIALS);
+    const existing: DuctMaterial[] = saved ? JSON.parse(saved) : [];
+    const updated = existing.filter((m) => m.id !== materialId);
+    localStorage.setItem(STORAGE_KEY_DUCT_MATERIALS, JSON.stringify(updated));
+    return [...DEFAULT_DUCT_MATERIALS, ...updated];
+  } catch (e) {
+    console.error('Error deleting custom duct material', e);
+    return loadDuctMaterials();
+  }
+}
+
 export function loadInsulationMaterials(): InsulationMaterial[] {
   try {
     const saved = localStorage.getItem(STORAGE_KEY_INS_MATERIALS);
@@ -339,5 +352,18 @@ export function saveCustomInsulationMaterial(material: InsulationMaterial): Insu
   } catch (e) {
     console.error('Error saving custom insulation material', e);
     return DEFAULT_INSULATION_MATERIALS;
+  }
+}
+
+export function deleteCustomInsulationMaterial(materialId: string): InsulationMaterial[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_INS_MATERIALS);
+    const existing: InsulationMaterial[] = saved ? JSON.parse(saved) : [];
+    const updated = existing.filter((m) => m.id !== materialId);
+    localStorage.setItem(STORAGE_KEY_INS_MATERIALS, JSON.stringify(updated));
+    return [...DEFAULT_INSULATION_MATERIALS, ...updated];
+  } catch (e) {
+    console.error('Error deleting custom insulation material', e);
+    return loadInsulationMaterials();
   }
 }

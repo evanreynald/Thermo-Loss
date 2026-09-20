@@ -1,1 +1,32 @@
 @import "tailwindcss";
+
+@theme {
+  /* SIG brand red, sampled from the logo mark (#F4313F) */
+  --color-brand-50: #fef0f1;
+  --color-brand-100: #fde2e4;
+  --color-brand-200: #fcc5c9;
+  --color-brand-300: #fa99a0;
+  --color-brand-400: #f7646f;
+  --color-brand-500: #f4313f;
+  --color-brand-600: #ef0d1d;
+  --color-brand-700: #c90b18;
+  --color-brand-800: #a20914;
+  --color-brand-900: #850710;
+  --color-brand-950: #68060d;
+
+  /* App chrome uses Tailwind's slate-* classes everywhere (backgrounds, borders,
+     text). Overriding the scale itself to a true neutral black/gray (instead of
+     slate's default blue tint) makes the app background match SIG's black,
+     without editing every component. */
+  --color-slate-50: #fafafa;
+  --color-slate-100: #f5f5f5;
+  --color-slate-200: #e5e5e5;
+  --color-slate-300: #d4d4d4;
+  --color-slate-400: #a3a3a3;
+  --color-slate-500: #737373;
+  --color-slate-600: #525252;
+  --color-slate-700: #404040;
+  --color-slate-800: #262626;
+  --color-slate-900: #171717;
+  --color-slate-950: #0a0a0a;
+}

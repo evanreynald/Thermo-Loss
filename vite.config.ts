@@ -17,8 +17,8 @@ export default defineConfig(() => {
           name: 'ThermoDuct - Thermal Insulation Analyzer',
           short_name: 'ThermoDuct',
           description: 'Aplikasi rekayasa untuk mendesain, mendiagnosa, dan menganalisa isolasi termal serta ketebalan ducting, pipa, dan kiln.',
-          theme_color: '#0f172a',
-          background_color: '#0f172a',
+          theme_color: '#0a0a0a',
+          background_color: '#0a0a0a',
           display: 'standalone',
           start_url: '/',
           scope: '/',
@@ -63,7 +63,9 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: true,
+          // Disabled: a dev-mode service worker precaches JS/CSS and can mask
+          // live edits behind a stale cache until manually unregistered.
+          enabled: false,
           type: 'module',
         },
       }),

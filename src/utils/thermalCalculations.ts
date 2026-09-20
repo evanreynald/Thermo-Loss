@@ -9,6 +9,8 @@ import { FLUID_PROPERTIES } from '../data/materials';
 
 const STEFAN_BOLTZMANN = 5.670374419e-8; // W/(m²·K⁴)
 
+type DiagnosticResult = NonNullable<CalculationResults['diagnostic']>;
+
 export function calculateThermalPerformance(
   inputs: CalculationInputs,
   ductMaterials: DuctMaterial[],
@@ -306,33 +308,99 @@ export function calculateThermalPerformance(
     }
 
     // Calculate intermediate temperatures
-    let currentTC = inputs.fluidTempC - Q_W * R_inside_conv_K_W;
-    const innerWallTC = currentTC;
-
     const layerResults: LayerResult[] = [];
+    let innerWallTC: number;
 
-    for (const el of evalLayers) {
-      const drop = Q_W * el.R_cond_K_W;
-      const tIn = currentTC;
-      const tOut = currentTC - drop;
-      currentTC = tOut;
+    if (forcedOuterTempC !== undefined) {
+      // Diagnostic mode: Q_W was anchored to the measured outer surface temperature.
+      // The nominal (catalog) insulation resistance almost never matches reality exactly —
+      // that mismatch is the whole point of a field diagnosis. Applying the field-implied
+      // Q_W across the *nominal* resistance network (fluid side or surface side, either
+      // direction) forces the fluid-to-surface budget to close over the wrong total
+      // resistance, producing physically impossible temperatures at whichever end isn't
+      // anchored (e.g. an inner wall far hotter than the fluid itself).
+      //
+      // Instead, solve for how much of the *insulation's* resistance is actually still
+      // present: hold the inside film and duct wall (both based on real, current geometry)
+      // fixed, and back out the insulation resistance that makes the fluid → measured-surface
+      // budget close exactly. That degradation factor is then applied uniformly across the
+      // insulation layers so the walked profile stays physically consistent end to end.
+      const nonInsulationR_K_W = evalLayers
+        .filter((el) => el.raw.position === 'duct_wall')
+        .reduce((sum, el) => sum + el.R_cond_K_W, 0);
+      const insulationR_nominal_K_W = evalLayers
+        .filter((el) => el.raw.position !== 'duct_wall')
+        .reduce((sum, el) => sum + el.R_cond_K_W, 0);
 
-      const maxT = Math.max(tIn, tOut);
-      const isOverheat = maxT > el.raw.maxServiceTempC;
+      const totalRequiredDropC = inputs.fluidTempC - T_s_out_C;
+      const fixedDropC = Q_W * (R_inside_conv_K_W + nonInsulationR_K_W);
+      const requiredInsulationDropC = totalRequiredDropC - fixedDropC;
+      const requiredInsulationR_K_W = Q_W !== 0 ? requiredInsulationDropC / Q_W : insulationR_nominal_K_W;
 
-      layerResults.push({
-        name: el.raw.name,
-        materialName: el.raw.materialName,
-        position: el.raw.position,
-        thicknessMm: el.raw.thicknessM * 1000,
-        innerRadiusMm: isCylinder ? el.r_in_m * 1000 : undefined,
-        outerRadiusMm: isCylinder ? el.r_out_m * 1000 : undefined,
-        rValue: el.R_cond_K_W,
-        tInnerC: tIn,
-        tOuterC: tOut,
-        maxServiceTempC: el.raw.maxServiceTempC,
-        isOverheating: isOverheat,
-      });
+      // How much of the nominal insulation resistance the field reading implies is left
+      // (clamped so a wildly inconsistent reading degrades gracefully instead of flipping sign)
+      const insulationRetainedFraction =
+        insulationR_nominal_K_W > 1e-9
+          ? Math.max(0.02, Math.min(1.5, requiredInsulationR_K_W / insulationR_nominal_K_W))
+          : 1;
+
+      let currentTC = T_s_out_C;
+      for (let i = evalLayers.length - 1; i >= 0; i--) {
+        const el = evalLayers[i];
+        const effectiveR_K_W =
+          el.raw.position === 'duct_wall' ? el.R_cond_K_W : el.R_cond_K_W * insulationRetainedFraction;
+        const drop = Q_W * effectiveR_K_W;
+        const tOut = currentTC;
+        const tIn = currentTC + drop;
+        currentTC = tIn;
+
+        const maxT = Math.max(tIn, tOut);
+        const isOverheat = maxT > el.raw.maxServiceTempC;
+
+        layerResults.unshift({
+          name: el.raw.name,
+          materialName: el.raw.materialName,
+          position: el.raw.position,
+          thicknessMm: el.raw.thicknessM * 1000,
+          innerRadiusMm: isCylinder ? el.r_in_m * 1000 : undefined,
+          outerRadiusMm: isCylinder ? el.r_out_m * 1000 : undefined,
+          rValue: effectiveR_K_W,
+          tInnerC: tIn,
+          tOuterC: tOut,
+          maxServiceTempC: el.raw.maxServiceTempC,
+          isOverheating: isOverheat,
+        });
+      }
+      innerWallTC = currentTC;
+    } else {
+      // Design mode: walk from the fluid side outward, since Q_W was solved
+      // self-consistently across the whole network (inside film + conduction + outside film).
+      let currentTC = inputs.fluidTempC - Q_W * R_inside_conv_K_W;
+      innerWallTC = currentTC;
+
+      for (const el of evalLayers) {
+        const drop = Q_W * el.R_cond_K_W;
+        const tIn = currentTC;
+        const tOut = currentTC - drop;
+        currentTC = tOut;
+
+        const maxT = Math.max(tIn, tOut);
+        const isOverheat = maxT > el.raw.maxServiceTempC;
+
+        layerResults.push({
+          name: el.raw.name,
+          materialName: el.raw.materialName,
+          position: el.raw.position,
+          thicknessMm: el.raw.thicknessM * 1000,
+          innerRadiusMm: isCylinder ? el.r_in_m * 1000 : undefined,
+          outerRadiusMm: isCylinder ? el.r_out_m * 1000 : undefined,
+          rValue: el.R_cond_K_W,
+          tInnerC: tIn,
+          tOuterC: tOut,
+          maxServiceTempC: el.raw.maxServiceTempC,
+          isOverheating: isOverheat,
+        });
+      }
     }
 
     return {
@@ -540,7 +608,7 @@ export function calculateThermalPerformance(
       Math.min(100, Math.max(0, (thinningMm / Math.max(0.5, initialCorrosionMm)) * 100)).toFixed(1)
     );
 
-    let ductIntegrityStatus: CalculationResults['diagnostic']['ductIntegrityStatus'] = 'Aman & Optimal';
+    let ductIntegrityStatus: DiagnosticResult['ductIntegrityStatus'] = 'Aman & Optimal';
     if (inputs.ductThicknessMm < recommendedDuctThicknessMm * 0.85) {
       ductIntegrityStatus = 'Di Bawah Tebal Minimum ASME/SMACNA';
     } else if (inputs.ductThicknessMm < recommendedDuctThicknessMm) {
@@ -553,7 +621,7 @@ export function calculateThermalPerformance(
 
     // Need for Insulation Assessment (Apakah Ducting Membutuhkan Isolasi?)
     let isInsulationNeeded = false;
-    let insulationUrgency: CalculationResults['diagnostic']['insulationUrgency'] = 'SUDAH MEMADAI (Aman)';
+    let insulationUrgency: DiagnosticResult['insulationUrgency'] = 'SUDAH MEMADAI (Aman)';
     let insulationReason = '';
 
     if (!hasInsulation || inputs.layers.length === 0) {
@@ -582,7 +650,7 @@ export function calculateThermalPerformance(
       }
     }
 
-    let condition: CalculationResults['diagnostic']['condition'] = 'Optimal';
+    let condition: DiagnosticResult['condition'] = 'Optimal';
     const recommendations: string[] = [];
 
     if (heatExcessRatio > 1.6 || isShellOverheating) {

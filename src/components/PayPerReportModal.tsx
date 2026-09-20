@@ -55,8 +55,8 @@ export const PayPerReportModal: React.FC<Props> = ({
     setIsGenerating(true);
 
     const metadata: ReportMetadata = {
-      projectName: projectName.trim() || 'Proyek Desain Termal Industri',
-      clientName: clientName.trim() || 'Fasilitas Operasional',
+      projectName: projectName.trim() || (lang === 'id' ? 'Proyek Desain Termal Industri' : 'Industrial Thermal Design Project'),
+      clientName: clientName.trim() || (lang === 'id' ? 'Fasilitas Operasional' : 'Operations Facility'),
       engineerName: engineerName.trim() || 'Certified Lead Engineer',
       reportNumber: `CERT-TD-${Date.now().toString().slice(-6)}`,
       dateStr: new Date().toLocaleString(lang === 'id' ? 'id-ID' : 'en-US'),
@@ -64,7 +64,7 @@ export const PayPerReportModal: React.FC<Props> = ({
     };
 
     setTimeout(() => {
-      exportCalculationToPDF(inputs, results, ductMaterial, canvasElement, metadata);
+      exportCalculationToPDF(inputs, results, ductMaterial, canvasElement, metadata, lang);
       setIsGenerating(false);
       onClose();
     }, 400);
@@ -76,7 +76,7 @@ export const PayPerReportModal: React.FC<Props> = ({
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/70">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-brand-800 flex items-center justify-center text-white shadow-lg shadow-brand-500/20 shrink-0">
               <Shield className="w-5 h-5" />
             </div>
             <div>
@@ -129,7 +129,7 @@ export const PayPerReportModal: React.FC<Props> = ({
           {/* Custom Metadata Inputs */}
           <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-blue-400" />
+              <FileText className="w-3.5 h-3.5 text-brand-400" />
               {lang === 'id' ? 'Informasi Proyek & Klien (Akan Dicetak di Header PDF)' : 'Project & Client Details (Printed in PDF Header)'}
             </h4>
 
@@ -143,7 +143,7 @@ export const PayPerReportModal: React.FC<Props> = ({
                   type="text"
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-hidden focus:border-blue-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-hidden focus:border-brand-500"
                   placeholder="e.g. Overhaul Flue Gas Ducting Unit 3"
                 />
               </div>
@@ -158,7 +158,7 @@ export const PayPerReportModal: React.FC<Props> = ({
                     type="text"
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-hidden focus:border-blue-500"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-hidden focus:border-brand-500"
                     placeholder="e.g. PT Industri Semen Nusantara"
                   />
                 </div>
@@ -172,7 +172,7 @@ export const PayPerReportModal: React.FC<Props> = ({
                     type="text"
                     value={engineerName}
                     onChange={(e) => setEngineerName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-hidden focus:border-blue-500"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-hidden focus:border-brand-500"
                     placeholder="e.g. Ir. Budi Santoso, ST, IPM"
                   />
                 </div>
@@ -189,27 +189,27 @@ export const PayPerReportModal: React.FC<Props> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300 text-xs">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Stempel Lisensi Resmi "THERMODUCT CERTIFIED"</span>
+                <span>{lang === 'id' ? 'Stempel Lisensi Resmi "THERMODUCT CERTIFIED"' : 'Official "THERMODUCT CERTIFIED" License Stamp'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Bebas dari watermark (Clean & High-Res)</span>
+                <span>{lang === 'id' ? 'Bebas dari watermark (Clean & High-Res)' : 'Watermark-Free (Clean & High-Res)'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Diagram 2D Cross-Section & Dimensi</span>
+                <span>{lang === 'id' ? 'Diagram 2D Cross-Section & Dimensi' : '2D Cross-Section & Dimension Diagram'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Distribusi Suhu Multi-Lapisan Dinding</span>
+                <span>{lang === 'id' ? 'Distribusi Suhu Multi-Lapisan Dinding' : 'Multi-Layer Wall Temperature Distribution'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Standar Kepatuhan ASTM C1055 & ASME B31.3</span>
+                <span>{lang === 'id' ? 'Standar Kepatuhan ASTM C1055 & ASME B31.3' : 'ASTM C1055 & ASME B31.3 Compliance Standard'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Kolom Tanda Tangan Pengesahan Auditor</span>
+                <span>{lang === 'id' ? 'Kolom Tanda Tangan Pengesahan Auditor' : 'Auditor Sign-Off Signature Block'}</span>
               </div>
             </div>
           </div>
@@ -229,7 +229,7 @@ export const PayPerReportModal: React.FC<Props> = ({
               id="confirm-export-pdf-btn"
               onClick={handleExportOfficial}
               disabled={isGenerating}
-              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 transition-all disabled:opacity-50"
+              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-brand-600 to-brand-800 hover:from-brand-500 hover:to-brand-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-brand-500/20 active:scale-95 transition-all disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
               <span>

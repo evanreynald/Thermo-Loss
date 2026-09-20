@@ -1,5 +1,10 @@
-import React from 'react';
-import { InsulationLayer, InsulationMaterial, InsulationPosition } from '../types';
+import React from "react";
+import {
+  InsulationLayer,
+  InsulationMaterial,
+  InsulationPosition,
+} from "../types";
+import { Language } from "../utils/translations";
 import {
   Plus,
   Trash2,
@@ -8,9 +13,10 @@ import {
   ShieldAlert,
   Edit3,
   Check,
-} from 'lucide-react';
+} from "lucide-react";
 
 interface Props {
+  lang: Language;
   hasInsulation: boolean;
   onToggleHasInsulation: (enabled: boolean) => void;
   layers: InsulationLayer[];
@@ -23,6 +29,7 @@ interface Props {
 }
 
 export const LayerManager: React.FC<Props> = ({
+  lang,
   hasInsulation,
   onToggleHasInsulation,
   layers,
@@ -31,71 +38,81 @@ export const LayerManager: React.FC<Props> = ({
   onToggleMultiLayer,
   onUpdateLayers,
   onOpenAddMaterialModal,
-  ductMaterialName = 'Shell Ducting',
+  ductMaterialName = "Shell Ducting",
 }) => {
+  const tr = (id: string, en: string) => (lang === "id" ? id : en);
+
   // Determine current dropdown value for insulation configuration
   const currentConfigValue = !hasInsulation
-    ? 'bare'
-    : isMultiLayer && layers.some((l) => l.position === 'inside')
-    ? 'lining_jacketing'
-    : isMultiLayer
-    ? 'multi_out'
-    : 'single';
+    ? "bare"
+    : isMultiLayer && layers.some((l) => l.position === "inside")
+      ? "lining_jacketing"
+      : isMultiLayer
+        ? "multi_out"
+        : "single";
 
   const handleConfigChange = (val: string) => {
-    if (val === 'bare') {
+    if (val === "bare") {
       onToggleHasInsulation(false);
-    } else if (val === 'single') {
+    } else if (val === "single") {
       onToggleHasInsulation(true);
       onToggleMultiLayer(false);
       // Keep only 1 outside layer
-      const firstOut = layers.find((l) => l.position === 'outside') || {
+      const firstOut = layers.find((l) => l.position === "outside") || {
         id: `layer-${Date.now()}`,
-        materialId: insulationMaterials[0]?.id || 'mat-rockwool',
-        position: 'outside' as InsulationPosition,
+        materialId: insulationMaterials[0]?.id || "mat-rockwool",
+        position: "outside" as InsulationPosition,
         thicknessMm: 50,
-        name: insulationMaterials[0]?.name || 'Rockwool Blanket',
+        name: insulationMaterials[0]?.name || "Rockwool Blanket",
       };
-      onUpdateLayers([{ ...firstOut, position: 'outside' }]);
-    } else if (val === 'multi_out') {
+      onUpdateLayers([{ ...firstOut, position: "outside" }]);
+    } else if (val === "multi_out") {
       onToggleHasInsulation(true);
       onToggleMultiLayer(true);
-      if (layers.length < 2) {
+      // Drop any inside/refractory layer left over from Lining + Shell + Jacket mode
+      const outsideOnly = layers.filter((l) => l.position === "outside");
+      if (outsideOnly.length < 2) {
         const mat2 = insulationMaterials[1] || insulationMaterials[0];
         onUpdateLayers([
-          ...layers,
+          ...outsideOnly,
           {
             id: `layer-${Date.now()}`,
             materialId: mat2.id,
-            position: 'outside',
+            position: "outside",
             thicknessMm: 30,
             name: mat2.name,
           },
         ]);
+      } else if (outsideOnly.length !== layers.length) {
+        onUpdateLayers(outsideOnly);
       }
-    } else if (val === 'lining_jacketing') {
+    } else if (val === "lining_jacketing") {
       onToggleHasInsulation(true);
       onToggleMultiLayer(true);
-      const hasInside = layers.some((l) => l.position === 'inside');
-      const hasOutside = layers.some((l) => l.position === 'outside');
+      const hasInside = layers.some((l) => l.position === "inside");
+      const hasOutside = layers.some((l) => l.position === "outside");
       const newLayers = [...layers];
 
       if (!hasInside) {
-        const refrMat = insulationMaterials.find((m) => m.isRefractory) || insulationMaterials[0];
+        const refrMat =
+          insulationMaterials.find((m) => m.isRefractory) ||
+          insulationMaterials[0];
         newLayers.unshift({
           id: `layer-refr-${Date.now()}`,
           materialId: refrMat.id,
-          position: 'inside',
+          position: "inside",
           thicknessMm: 114,
           name: refrMat.name,
         });
       }
       if (!hasOutside) {
-        const outMat = insulationMaterials.find((m) => !m.isRefractory) || insulationMaterials[0];
+        const outMat =
+          insulationMaterials.find((m) => !m.isRefractory) ||
+          insulationMaterials[0];
         newLayers.push({
           id: `layer-out-${Date.now()}`,
           materialId: outMat.id,
-          position: 'outside',
+          position: "outside",
           thicknessMm: 50,
           name: outMat.name,
         });
@@ -106,15 +123,17 @@ export const LayerManager: React.FC<Props> = ({
 
   const handleAddLayer = (pos: InsulationPosition) => {
     const defaultMat =
-      pos === 'inside'
-        ? insulationMaterials.find((m) => m.isRefractory) || insulationMaterials[0]
-        : insulationMaterials.find((m) => !m.isRefractory) || insulationMaterials[0];
+      pos === "inside"
+        ? insulationMaterials.find((m) => m.isRefractory) ||
+          insulationMaterials[0]
+        : insulationMaterials.find((m) => !m.isRefractory) ||
+          insulationMaterials[0];
 
     const newLayer: InsulationLayer = {
       id: `layer-${Date.now()}`,
       materialId: defaultMat.id,
       position: pos,
-      thicknessMm: pos === 'inside' ? 100 : 50,
+      thicknessMm: pos === "inside" ? 100 : 50,
       name: defaultMat.name,
       customConductivity: defaultMat.thermalConductivity,
       customMaxTempC: defaultMat.maxServiceTempC,
@@ -136,8 +155,10 @@ export const LayerManager: React.FC<Props> = ({
       layers.map((l) => {
         if (l.id === id) {
           const updated = { ...l, ...updates };
-          if (updates.materialId && updates.materialId !== 'custom_manual') {
-            const mat = insulationMaterials.find((m) => m.id === updates.materialId);
+          if (updates.materialId && updates.materialId !== "custom_manual") {
+            const mat = insulationMaterials.find(
+              (m) => m.id === updates.materialId,
+            );
             if (mat) {
               updated.name = mat.name;
               // If not in manual mode, update conductivities to match material
@@ -150,7 +171,7 @@ export const LayerManager: React.FC<Props> = ({
           return updated;
         }
         return l;
-      })
+      }),
     );
   };
 
@@ -160,7 +181,13 @@ export const LayerManager: React.FC<Props> = ({
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800">
         <div className="flex items-center gap-2">
           <Layers className="w-4 h-4 text-amber-400" />
-          <h3 className="text-sm font-semibold text-white">4. Konfigurasi Lapisan Isolasi</h3>
+          <h3 className="text-sm font-semibold text-white">
+            4.{" "}
+            {tr(
+              "Konfigurasi Lapisan Isolasi",
+              "Insulation Layer Configuration",
+            )}
+          </h3>
         </div>
 
         <button
@@ -169,14 +196,17 @@ export const LayerManager: React.FC<Props> = ({
           className="text-xs text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-lg border border-amber-500/30 transition-colors flex items-center gap-1"
         >
           <Plus className="w-3 h-3" />
-          + Master Data Material
+          {tr("Master Data Material", "Master Material Data")}
         </button>
       </div>
 
       {/* DROPDOWN MENU KONFIGURASI LAPISAN ISOLASI (Sesuai Permintaan User a.4) */}
       <div className="space-y-1.5">
-        <label htmlFor="insulation-config-select" className="block text-xs font-semibold text-slate-300">
-          Pilihan Konfigurasi Isolasi:
+        <label
+          htmlFor="insulation-config-select"
+          className="block text-xs font-semibold text-slate-300"
+        >
+          {tr("Pilihan Konfigurasi Isolasi:", "Insulation Configuration:")}
         </label>
         <select
           id="insulation-config-select"
@@ -184,19 +214,55 @@ export const LayerManager: React.FC<Props> = ({
           onChange={(e) => handleConfigChange(e.target.value)}
           className="w-full bg-slate-950 border border-slate-700 hover:border-slate-600 rounded-lg px-3 py-2 text-xs font-semibold text-slate-200 focus:outline-none focus:border-amber-500 transition-colors shadow-xs"
         >
-          <option value="single">🛡️ Dengan Isolasi (Single-Layer / 1 Lapis Luar)</option>
-          <option value="multi_out">📚 Dengan Isolasi (Multi-Layer / Lapis Luar Bertingkat)</option>
-          <option value="lining_jacketing">🧱 Refraktori Dalam + Isolasi Luar (Lining + Shell + Jacket)</option>
-          <option value="bare">⚠️ Tanpa Isolasi (Bare Duct / Pipa Telanjang)</option>
+          <option value="single">
+            🛡️{" "}
+            {tr(
+              "Dengan Isolasi (Single-Layer / 1 Lapis Luar)",
+              "Insulated (Single-Layer / 1 Outer Layer)",
+            )}
+          </option>
+          <option value="multi_out">
+            📚{" "}
+            {tr(
+              "Dengan Isolasi (Multi-Layer / Lapis Luar Bertingkat)",
+              "Insulated (Multi-Layer / Stacked Outer Layers)",
+            )}
+          </option>
+          <option value="lining_jacketing">
+            🧱{" "}
+            {tr(
+              "Refraktori Dalam + Isolasi Luar (Lining + Shell + Jacket)",
+              "Inner Refractory + Outer Insulation (Lining + Shell + Jacket)",
+            )}
+          </option>
+          <option value="bare">
+            ⚠️{" "}
+            {tr(
+              "Tanpa Isolasi (Bare Duct / Pipa Telanjang)",
+              "Uninsulated (Bare Duct / Bare Pipe)",
+            )}
+          </option>
         </select>
         <p className="text-[11px] text-slate-500">
-          {currentConfigValue === 'bare'
-            ? 'Pipa beroperasi tanpa isolasi. Panas langsung terbuang ke udara bebas.'
-            : currentConfigValue === 'single'
-            ? 'Konfigurasi standar 1 lapis isolasi eksternal (Rockwool, Glasswool, Calcium Silicate, dll).'
-            : currentConfigValue === 'lining_jacketing'
-            ? 'Kombinasi bata tahan api / castable di dalam saluran dan isolasi penahan panas di luar.'
-            : 'Multi-layer dengan beberapa lapis isolasi berbeda untuk efisiensi termal bertingkat.'}
+          {currentConfigValue === "bare"
+            ? tr(
+                "Pipa beroperasi tanpa isolasi. Panas langsung terbuang ke udara bebas.",
+                "The pipe operates without insulation. Heat is lost directly to open air.",
+              )
+            : currentConfigValue === "single"
+              ? tr(
+                  "Konfigurasi standar 1 lapis isolasi eksternal (Rockwool, Glasswool, Calcium Silicate, dll).",
+                  "Standard configuration with 1 external insulation layer (Rockwool, Glasswool, Calcium Silicate, etc).",
+                )
+              : currentConfigValue === "lining_jacketing"
+                ? tr(
+                    "Kombinasi bata tahan api / castable di dalam saluran dan isolasi penahan panas di luar.",
+                    "Combination of firebrick / castable lining inside the duct and heat-retaining insulation outside.",
+                  )
+                : tr(
+                    "Multi-layer dengan beberapa lapis isolasi berbeda untuk efisiensi termal bertingkat.",
+                    "Multi-layer with several different insulation layers for staged thermal efficiency.",
+                  )}
         </p>
       </div>
 
@@ -210,27 +276,38 @@ export const LayerManager: React.FC<Props> = ({
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wide">
-                  Kondisi: Pipa / Ducting Telanjang (Uninsulated / Bare)
+                  {tr(
+                    "Kondisi: Pipa / Ducting Telanjang (Uninsulated / Bare)",
+                    "Condition: Bare Pipe / Ducting (Uninsulated)",
+                  )}
                 </h4>
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-red-500/20 text-red-300 border border-red-500/30 font-semibold">
-                  0 mm Isolator
+                  0 mm {tr("Isolator", "Insulator")}
                 </span>
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
-                Ducting saat ini beroperasi tanpa isolasi. Panas fluida mengalir langsung menembus plat baja shell ({ductMaterialName}) dan terbuang ke udara bebas melalui konveksi dan radiasi termal.
+                {tr(
+                  `Ducting saat ini beroperasi tanpa isolasi. Panas fluida mengalir langsung menembus plat baja shell (${ductMaterialName}) dan terbuang ke udara bebas melalui konveksi dan radiasi termal.`,
+                  `The duct currently operates without insulation. Fluid heat passes directly through the shell plate (${ductMaterialName}) and is lost to open air via convection and thermal radiation.`,
+                )}
               </p>
             </div>
           </div>
 
           <div className="flex items-center justify-between pt-1">
-            <span className="text-xs text-slate-400">Ingin beralih memasang isolasi?</span>
+            <span className="text-xs text-slate-400">
+              {tr(
+                "Ingin beralih memasang isolasi?",
+                "Want to switch to installing insulation?",
+              )}
+            </span>
             <button
               type="button"
-              onClick={() => handleConfigChange('single')}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
+              onClick={() => handleConfigChange("single")}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
             >
               <Plus className="w-3.5 h-3.5" />
-              Pasang Lapisan Isolasi
+              {tr("Pasang Lapisan Isolasi", "Install Insulation Layer")}
             </button>
           </div>
         </div>
@@ -240,9 +317,12 @@ export const LayerManager: React.FC<Props> = ({
           {/* Layer List */}
           <div className="space-y-3">
             {layers.map((layer, index) => {
-              const selectedMat = insulationMaterials.find((m) => m.id === layer.materialId);
+              const selectedMat = insulationMaterials.find(
+                (m) => m.id === layer.materialId,
+              );
               const currentConductivity =
-                layer.customConductivity !== undefined && layer.customConductivity > 0
+                layer.customConductivity !== undefined &&
+                layer.customConductivity > 0
                   ? layer.customConductivity
                   : selectedMat?.thermalConductivity || 0.04;
               const currentMaxTemp =
@@ -263,12 +343,24 @@ export const LayerManager: React.FC<Props> = ({
                       <select
                         value={layer.position}
                         onChange={(e) =>
-                          handleUpdateLayer(layer.id, { position: e.target.value as InsulationPosition })
+                          handleUpdateLayer(layer.id, {
+                            position: e.target.value as InsulationPosition,
+                          })
                         }
                         className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 text-[11px] font-semibold"
                       >
-                        <option value="outside">Isolator di LUAR Shell (Eksternal)</option>
-                        <option value="inside">Refraktori di DALAM Shell (Lining/Bata)</option>
+                        <option value="outside">
+                          {tr(
+                            "Isolator di LUAR Shell (Eksternal)",
+                            "Insulator OUTSIDE Shell (External)",
+                          )}
+                        </option>
+                        <option value="inside">
+                          {tr(
+                            "Refraktori di DALAM Shell (Lining/Bata)",
+                            "Refractory INSIDE Shell (Lining/Brick)",
+                          )}
+                        </option>
                       </select>
                     </div>
 
@@ -285,20 +377,31 @@ export const LayerManager: React.FC<Props> = ({
                         }
                         className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
                           layer.isManualConductivity
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                            : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-slate-200'
+                            ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                            : "bg-slate-900 text-slate-400 border-slate-700 hover:text-slate-200"
                         }`}
-                        title="Input nilai konduktivitas termal (k) secara manual tanpa menambah katalog baru"
+                        title={tr(
+                          "Input nilai konduktivitas termal (k) secara manual tanpa menambah katalog baru",
+                          "Manually enter the thermal conductivity (k) value without adding a new catalog entry",
+                        )}
                       >
                         <Edit3 className="w-3 h-3 text-amber-400" />
-                        <span>{layer.isManualConductivity ? '✓ k Manual Aktif' : 'Input k Manual'}</span>
+                        <span>
+                          {layer.isManualConductivity
+                            ? tr("✓ k Manual Aktif", "✓ Manual k Active")
+                            : tr("Input k Manual", "Manual k Input")}
+                        </span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleRemoveLayer(layer.id)}
                         className="p-1 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                        title={layers.length <= 1 ? 'Jadikan tanpa isolasi' : 'Hapus lapisan ini'}
+                        title={
+                          layers.length <= 1
+                            ? tr("Jadikan tanpa isolasi", "Set to uninsulated")
+                            : tr("Hapus lapisan ini", "Remove this layer")
+                        }
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -310,18 +413,27 @@ export const LayerManager: React.FC<Props> = ({
                     {/* Material Selector (col 8) */}
                     <div className="sm:col-span-8">
                       <label className="block text-[10px] text-slate-400 uppercase font-semibold mb-1">
-                        Pilihan Material Isolasi:
+                        {tr(
+                          "Pilihan Material Isolasi:",
+                          "Insulation Material:",
+                        )}
                       </label>
                       <select
-                        value={layer.isManualConductivity ? 'custom_manual' : layer.materialId}
+                        value={
+                          layer.isManualConductivity
+                            ? "custom_manual"
+                            : layer.materialId
+                        }
                         onChange={(e) => {
                           const val = e.target.value;
-                          if (val === 'custom_manual') {
+                          if (val === "custom_manual") {
                             handleUpdateLayer(layer.id, {
                               isManualConductivity: true,
                               customConductivity: currentConductivity || 0.04,
                               customMaxTempC: currentMaxTemp || 650,
-                              name: layer.name?.includes('Custom') ? layer.name : 'Custom Insulation',
+                              name: layer.name?.includes("Custom")
+                                ? layer.name
+                                : "Custom Insulation",
                             });
                           } else {
                             handleUpdateLayer(layer.id, {
@@ -333,23 +445,39 @@ export const LayerManager: React.FC<Props> = ({
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-amber-500 font-medium"
                       >
                         <option value="custom_manual">
-                          ✏️ [Manual Override] Input Nilai k Sendiri (Tanpa Katalog)
+                          ✏️{" "}
+                          {tr(
+                            "[Manual Override] Input Nilai k Sendiri (Tanpa Katalog)",
+                            "[Manual Override] Enter Your Own k Value (No Catalog)",
+                          )}
                         </option>
-                        <optgroup label="Isolator Blanket, Board, & Silicate (Eksternal)">
+                        <optgroup
+                          label={tr(
+                            "Isolator Blanket, Board, & Silicate (Eksternal)",
+                            "Blanket, Board, & Silicate Insulators (External)",
+                          )}
+                        >
                           {insulationMaterials
                             .filter((m) => !m.isRefractory)
                             .map((m) => (
                               <option key={m.id} value={m.id}>
-                                {m.name} (k={m.thermalConductivity} W/m·K, Max {m.maxServiceTempC}°C)
+                                {m.name} (k={m.thermalConductivity} W/m·K, Max{" "}
+                                {m.maxServiceTempC}°C)
                               </option>
                             ))}
                         </optgroup>
-                        <optgroup label="Bata Tahan Api & Castable (Internal / Lining)">
+                        <optgroup
+                          label={tr(
+                            "Bata Tahan Api & Castable (Internal / Lining)",
+                            "Firebrick & Castable (Internal / Lining)",
+                          )}
+                        >
                           {insulationMaterials
                             .filter((m) => m.isRefractory)
                             .map((m) => (
                               <option key={m.id} value={m.id}>
-                                {m.name} (k={m.thermalConductivity} W/m·K, Max {m.maxServiceTempC}°C)
+                                {m.name} (k={m.thermalConductivity} W/m·K, Max{" "}
+                                {m.maxServiceTempC}°C)
                               </option>
                             ))}
                         </optgroup>
@@ -359,7 +487,7 @@ export const LayerManager: React.FC<Props> = ({
                     {/* Thickness Input (col 4) */}
                     <div className="sm:col-span-4">
                       <label className="block text-[10px] text-slate-400 uppercase font-semibold mb-1">
-                        Tebal Lapisan:
+                        {tr("Tebal Lapisan:", "Layer Thickness:")}
                       </label>
                       <div className="flex items-center gap-1.5">
                         <input
@@ -369,12 +497,17 @@ export const LayerManager: React.FC<Props> = ({
                           value={layer.thicknessMm}
                           onChange={(e) =>
                             handleUpdateLayer(layer.id, {
-                              thicknessMm: Math.max(1, parseInt(e.target.value) || 1),
+                              thicknessMm: Math.max(
+                                1,
+                                parseInt(e.target.value) || 1,
+                              ),
                             })
                           }
                           className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-right text-white font-mono font-bold text-xs focus:outline-none focus:border-amber-500"
                         />
-                        <span className="text-slate-400 text-xs font-semibold shrink-0">mm</span>
+                        <span className="text-slate-400 text-xs font-semibold shrink-0">
+                          mm
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -385,18 +518,35 @@ export const LayerManager: React.FC<Props> = ({
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-amber-300 flex items-center gap-1">
                           <Edit3 className="w-3.5 h-3.5 text-amber-400" />
-                          Input Manual Konduktivitas Termal (k):
+                          {tr(
+                            "Input Manual Konduktivitas Termal (k):",
+                            "Manual Thermal Conductivity Input (k):",
+                          )}
                         </span>
-                        <span className="text-[10px] text-amber-300/80">Langsung digunakan dalam rumus</span>
+                        <span className="text-[10px] text-amber-300/80">
+                          {tr(
+                            "Langsung digunakan dalam rumus",
+                            "Used directly in the formula",
+                          )}
+                        </span>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <div>
-                          <label className="block text-[10px] text-slate-400 mb-0.5">Nama Material (Opsional):</label>
+                          <label className="block text-[10px] text-slate-400 mb-0.5">
+                            {tr(
+                              "Nama Material (Opsional):",
+                              "Material Name (Optional):",
+                            )}
+                          </label>
                           <input
                             type="text"
-                            value={layer.name || ''}
-                            onChange={(e) => handleUpdateLayer(layer.id, { name: e.target.value })}
+                            value={layer.name || ""}
+                            onChange={(e) =>
+                              handleUpdateLayer(layer.id, {
+                                name: e.target.value,
+                              })
+                            }
                             placeholder="e.g. Aerogel Blanket Spesial"
                             className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs"
                           />
@@ -404,7 +554,10 @@ export const LayerManager: React.FC<Props> = ({
 
                         <div>
                           <label className="block text-[10px] text-slate-400 mb-0.5 font-bold text-amber-300">
-                            Konduktivitas k (W/m·K) *:
+                            {tr(
+                              "Konduktivitas k (W/m·K) *:",
+                              "Conductivity k (W/m·K) *:",
+                            )}
                           </label>
                           <input
                             type="number"
@@ -414,7 +567,10 @@ export const LayerManager: React.FC<Props> = ({
                             value={currentConductivity}
                             onChange={(e) =>
                               handleUpdateLayer(layer.id, {
-                                customConductivity: Math.max(0.005, parseFloat(e.target.value) || 0.04),
+                                customConductivity: Math.max(
+                                  0.005,
+                                  parseFloat(e.target.value) || 0.04,
+                                ),
                               })
                             }
                             className="w-full bg-slate-900 border border-amber-500/60 rounded px-2 py-1 text-amber-300 font-mono font-bold text-xs"
@@ -422,7 +578,9 @@ export const LayerManager: React.FC<Props> = ({
                         </div>
 
                         <div>
-                          <label className="block text-[10px] text-slate-400 mb-0.5">Max Temp (°C):</label>
+                          <label className="block text-[10px] text-slate-400 mb-0.5">
+                            Max Temp (°C):
+                          </label>
                           <input
                             type="number"
                             min="50"
@@ -443,28 +601,48 @@ export const LayerManager: React.FC<Props> = ({
                         <span>Contoh acuan:</span>
                         <button
                           type="button"
-                          onClick={() => handleUpdateLayer(layer.id, { customConductivity: 0.038, customMaxTempC: 650 })}
+                          onClick={() =>
+                            handleUpdateLayer(layer.id, {
+                              customConductivity: 0.038,
+                              customMaxTempC: 650,
+                            })
+                          }
                           className="px-1.5 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded text-slate-300"
                         >
                           Rockwool (0.038)
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleUpdateLayer(layer.id, { customConductivity: 0.065, customMaxTempC: 1000 })}
+                          onClick={() =>
+                            handleUpdateLayer(layer.id, {
+                              customConductivity: 0.065,
+                              customMaxTempC: 1000,
+                            })
+                          }
                           className="px-1.5 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded text-slate-300"
                         >
                           CalSil (0.065)
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleUpdateLayer(layer.id, { customConductivity: 0.022, customMaxTempC: 650 })}
+                          onClick={() =>
+                            handleUpdateLayer(layer.id, {
+                              customConductivity: 0.022,
+                              customMaxTempC: 650,
+                            })
+                          }
                           className="px-1.5 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded text-slate-300"
                         >
                           Aerogel (0.022)
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleUpdateLayer(layer.id, { customConductivity: 0.12, customMaxTempC: 1300 })}
+                          onClick={() =>
+                            handleUpdateLayer(layer.id, {
+                              customConductivity: 0.12,
+                              customMaxTempC: 1300,
+                            })
+                          }
                           className="px-1.5 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded text-slate-300"
                         >
                           Ceramic Fiber (0.12)
@@ -474,9 +652,14 @@ export const LayerManager: React.FC<Props> = ({
                   ) : (
                     <div className="text-[11px] text-slate-400 flex items-center justify-between px-1">
                       <span>
-                        Nilai Termal: k ={' '}
-                        <strong className="text-slate-300 font-mono">{currentConductivity} W/m·K</strong> | Max{' '}
-                        <strong className="text-slate-300 font-mono">{currentMaxTemp}°C</strong>
+                        Nilai Termal: k ={" "}
+                        <strong className="text-slate-300 font-mono">
+                          {currentConductivity} W/m·K
+                        </strong>{" "}
+                        | Max{" "}
+                        <strong className="text-slate-300 font-mono">
+                          {currentMaxTemp}°C
+                        </strong>
                       </span>
                       <button
                         type="button"
@@ -503,19 +686,19 @@ export const LayerManager: React.FC<Props> = ({
             <div className="flex flex-wrap gap-2 pt-1">
               <button
                 type="button"
-                onClick={() => handleAddLayer('outside')}
+                onClick={() => handleAddLayer("outside")}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 transition-colors"
               >
-                <Plus className="w-3.5 h-3.5 text-blue-400" />
-                + Tambah Lapis Isolasi Luar
+                <Plus className="w-3.5 h-3.5 text-brand-400" />+ Tambah Lapis
+                Isolasi Luar
               </button>
               <button
                 type="button"
-                onClick={() => handleAddLayer('inside')}
+                onClick={() => handleAddLayer("inside")}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 transition-colors"
               >
-                <Plus className="w-3.5 h-3.5 text-amber-400" />
-                + Tambah Refraktori Dalam (Kiln / Lining)
+                <Plus className="w-3.5 h-3.5 text-amber-400" />+ Tambah
+                Refraktori Dalam (Kiln / Lining)
               </button>
             </div>
           ) : (
@@ -526,8 +709,8 @@ export const LayerManager: React.FC<Props> = ({
               </span>
               <button
                 type="button"
-                onClick={() => handleConfigChange('multi_out')}
-                className="text-blue-400 hover:underline text-[11px] font-medium"
+                onClick={() => handleConfigChange("multi_out")}
+                className="text-brand-400 hover:underline text-[11px] font-medium"
               >
                 + Ubah ke Multi-Layer
               </button>

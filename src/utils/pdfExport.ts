@@ -1,501 +1,486 @@
 import jsPDF from 'jspdf';
 import { CalculationInputs, CalculationResults, DuctMaterial, ReportMetadata } from '../types';
+import { Language, getSafetyStatusMessage } from './translations';
+
+// ---- Palette (matches the app's black/white/red brand) ----
+const INK = [15, 23, 42] as const; // near-black text
+const SUBTLE = [100, 116, 139] as const; // gray secondary text
+const FAINT = [148, 163, 184] as const; // lighter gray / footer text
+const LINE = [226, 232, 240] as const; // hairline borders
+const PANEL = [248, 250, 252] as const; // very light gray panel fill
+const DARK_BG = [15, 23, 42] as const; // header banner background
+const BRAND = [239, 68, 68] as const; // brand red accent
+const SAFE = [22, 163, 74] as const; // green
+const WARN = [217, 119, 6] as const; // amber
+
+// Finite-value labels coming out of the calculation engine (always Indonesian at the
+// source) get a small lookup table for English display (statusMessage is rebuilt entirely
+// via getSafetyStatusMessage instead, since it's just 3 fixed templates). True free-text
+// diagnostic narrative (insulationReason, recommendations[]) is generated with embedded
+// numbers by thermalCalculations.ts and stays Indonesian — localizing that means the
+// calculation engine itself needs to produce bilingual text, which is out of scope here.
+const FLOW_TYPE_EN: Record<string, string> = {
+  Turbulen: 'Turbulent',
+  Laminar: 'Laminar',
+  Transisi: 'Transitional',
+};
+
+const DUCT_INTEGRITY_EN: Record<string, string> = {
+  'Aman & Optimal': 'Safe & Optimal',
+  'Penipisan Ringan': 'Minor Thinning',
+  'Waspada Penipisan Kritis': 'Critical Thinning Warning',
+  'Di Bawah Tebal Minimum ASME/SMACNA': 'Below ASME/SMACNA Minimum Thickness',
+};
+
+const INSULATION_URGENCY_EN: Record<string, string> = {
+  'SUDAH MEMADAI (Aman)': 'ADEQUATE (Safe)',
+  'WAJIB (Bahaya Personil & Pemborosan Ekstrem)': 'MANDATORY (Personnel Hazard & Severe Energy Waste)',
+  'DIANJURKAN (Konservasi Energi)': 'RECOMMENDED (Energy Conservation)',
+};
 
 export function exportCalculationToPDF(
   inputs: CalculationInputs,
   results: CalculationResults,
   ductMaterial: DuctMaterial,
   canvasElement?: HTMLCanvasElement | null,
-  metadata?: ReportMetadata
+  metadata?: ReportMetadata,
+  lang: Language = 'id'
 ) {
+  const tr = (id: string, en: string) => (lang === 'id' ? id : en);
+  const trVal = (map: Record<string, string>, value: string) => (lang === 'id' ? value : map[value] || value);
+
   const isCertified = metadata?.isCertified ?? true;
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 14;
-  let y = 14;
+  const margin = 16;
+  const contentW = pageWidth - 2 * margin;
 
-  // Header Banner
-  doc.setFillColor(15, 23, 42); // slate-900
-  doc.rect(margin, y, pageWidth - 2 * margin, 24, 'F');
+  // ---- small drawing helpers, kept consistent across the whole document ----
+  const setColor = (target: 'fill' | 'draw' | 'text', rgb: readonly [number, number, number]) => {
+    if (target === 'fill') doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+    else if (target === 'draw') doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
+    else doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+  };
 
-  // Title
-  doc.setTextColor(255, 255, 255);
+  const sectionTitle = (title: string, y: number) => {
+    setColor('fill', BRAND);
+    doc.rect(margin, y - 3.2, 2, 4.2, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10.5);
+    setColor('text', INK);
+    doc.text(title, margin + 4, y);
+    return y + 6;
+  };
+
+  const bodyLine = (text: string, x: number, y: number, opts?: { bold?: boolean; color?: readonly [number, number, number]; size?: number }) => {
+    doc.setFont('helvetica', opts?.bold ? 'bold' : 'normal');
+    doc.setFontSize(opts?.size ?? 8.2);
+    setColor('text', opts?.color ?? SUBTLE);
+    doc.text(text, x, y);
+  };
+
+  const footer = (pageLabel: string) => {
+    setColor('draw', LINE);
+    doc.setLineWidth(0.2);
+    doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    setColor('text', FAINT);
+    doc.text('ThermoDuct Engineering Suite  ·  ASTM C1055, ASME B31.3, SMACNA', margin, pageHeight - 7);
+    doc.text(pageLabel, pageWidth - margin, pageHeight - 7, { align: 'right' });
+  };
+
+  // ==========================================================
+  // PAGE 1 — SUMMARY, VISUAL, PARAMETERS, WALL LAYERS, NOTES
+  // ==========================================================
+  let y = margin;
+
+  // --- Header banner ---
+  const headerH = 24;
+  setColor('fill', DARK_BG);
+  doc.rect(0, 0, pageWidth, headerH, 'F');
+
+  setColor('text', [255, 255, 255]);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.text('LAPORAN TEKNIS ANALISA & DESAIN ISOLASI TERMAL', margin + 6, y + 7.5);
+  doc.setFontSize(14);
+  doc.text(tr('Laporan Analisa & Desain Isolasi Termal', 'Thermal Insulation Analysis & Design Report'), margin, 11);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(148, 163, 184);
+  doc.setFontSize(8);
+  setColor('text', FAINT);
   const modeStr =
     inputs.mode === 'design'
-      ? 'MODE DESAIN (OPTIMISASI TEBAL)'
-      : 'MODE DIAGNOSA (AUDIT KINERJA EKSISTING)';
-  const dateStr = metadata?.dateStr || new Date().toLocaleString('id-ID');
-  doc.text(`ThermoDuct Engineering Suite | ${modeStr} | Diterbitkan: ${dateStr}`, margin + 6, y + 13);
+      ? tr('Mode Desain — Optimisasi Tebal', 'Design Mode — Thickness Optimization')
+      : tr('Mode Diagnosa — Audit Kinerja Eksisting', 'Diagnostic Mode — Existing Performance Audit');
+  const dateStr = metadata?.dateStr || new Date().toLocaleString(lang === 'id' ? 'id-ID' : 'en-US');
+  doc.text(`${modeStr}  ·  ${tr('Diterbitkan', 'Published')} ${dateStr}`, margin, 17);
 
-  // Project & Client info
-  const projText = `Proyek: ${metadata?.projectName || 'Komersial / Industrial Ducting'}  |  Klien: ${metadata?.clientName || 'General Industrial Plant'}  |  Auditor: ${metadata?.engineerName || 'Certified Engineer'}`;
-  doc.setFontSize(7);
-  doc.setTextColor(203, 213, 225);
-  doc.text(projText.length > 85 ? projText.slice(0, 83) + '...' : projText, margin + 6, y + 19);
+  const projLine = `${metadata?.projectName || 'Industrial Ducting Project'}  ·  ${tr('Klien', 'Client')}: ${metadata?.clientName || 'General Industrial Plant'}`;
+  doc.text(projLine.length > 90 ? projLine.slice(0, 88) + '…' : projLine, margin, 21.5);
 
-  // Official Certified Badge vs Unverified Draft Badge in Top Right
-  if (isCertified) {
-    const badgeW = 48;
-    const badgeH = 16;
-    const badgeX = pageWidth - margin - badgeW - 3;
-    const badgeY = y + 4;
-    doc.setFillColor(30, 58, 138); // blue-900
-    doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.5, 1.5, 'F');
-    doc.setDrawColor(234, 179, 8); // amber-500 gold
-    doc.setLineWidth(0.6);
-    doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.5, 1.5, 'S');
+  // Simple status chip, top-right — no gimmicks, just a clean label
+  const chipLabel = isCertified ? tr('LAPORAN RESMI', 'OFFICIAL REPORT') : 'DRAFT SAMPLE';
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  const chipW = doc.getTextWidth(chipLabel) + 8;
+  const chipX = pageWidth - margin - chipW;
+  const chipY = 8;
+  setColor('fill', isCertified ? BRAND : [71, 85, 105]);
+  doc.roundedRect(chipX, chipY, chipW, 7, 1.5, 1.5, 'F');
+  setColor('text', [255, 255, 255]);
+  doc.text(chipLabel, chipX + chipW / 2, chipY + 4.8, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  setColor('text', FAINT);
+  doc.text(metadata?.reportNumber || `TD-${Date.now().toString().slice(-6)}`, chipX + chipW, chipY + 12, { align: 'right' });
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.setTextColor(253, 224, 71); // amber-300
-    doc.text('★ RESMI & TERLISENSI ★', badgeX + 5, badgeY + 4.5);
+  y = headerH + 9;
 
+  // --- KPI summary cards (4 across, generous padding) ---
+  const cardGap = 5;
+  const cardW = (contentW - 3 * cardGap) / 4;
+  const cardH = 22;
+
+  const drawCard = (x: number, label: string, value: string, sub: string, valueColor: readonly [number, number, number] = INK) => {
+    setColor('fill', PANEL);
+    setColor('draw', LINE);
+    doc.setLineWidth(0.25);
+    doc.roundedRect(x, y, cardW, cardH, 2, 2, 'FD');
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(5.5);
-    doc.setTextColor(255, 255, 255);
-    doc.text(`No: ${metadata?.reportNumber || `CERT-TD-${Date.now().toString().slice(-6)}`}`, badgeX + 5, badgeY + 9);
-    doc.text('Valid: ASTM C1055 / ASME B31.3', badgeX + 5, badgeY + 13);
-  } else {
-    const badgeW = 45;
-    const badgeH = 14;
-    const badgeX = pageWidth - margin - badgeW - 3;
-    const badgeY = y + 5;
-    doc.setFillColor(69, 26, 26);
-    doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.5, 1.5, 'F');
+    doc.setFontSize(6.8);
+    setColor('text', SUBTLE);
+    doc.text(label.toUpperCase(), x + 4, y + 6);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.setTextColor(248, 113, 113);
-    doc.text('DRAFT SAMPLE (GRATIS)', badgeX + 4, badgeY + 5.5);
+    doc.setFontSize(13);
+    setColor('text', valueColor);
+    doc.text(value, x + 4, y + 14.5);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(5.5);
-    doc.setTextColor(226, 232, 240);
-    doc.text('Pay Per Report untuk Lisensi Resmi', badgeX + 4, badgeY + 10);
-  }
+    doc.setFontSize(6.8);
+    setColor('text', SUBTLE);
+    doc.text(sub, x + 4, y + 19);
+  };
 
-  y += 28;
+  const c1X = margin;
+  const c2X = c1X + cardW + cardGap;
+  const c3X = c2X + cardW + cardGap;
+  const c4X = c3X + cardW + cardGap;
 
-  // Summary KPI Cards (4 cards in a row)
-  const cardW = (pageWidth - 2 * margin - 9) / 4;
-  const cardH = 18;
+  drawCard(c1X, 'Total Heat Loss', `${(results.heatLossTotalW / 1000).toFixed(2)} kW`, `Flux: ${results.heatFluxWm2} W/m²`);
 
-  // Card 1: Heat Loss
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(margin, y, cardW, cardH, 2, 2, 'FD');
-  doc.setFontSize(7);
-  doc.setTextColor(100, 116, 139);
-  doc.text('TOTAL HEAT LOSS', margin + 3, y + 5);
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(15, 23, 42);
-  doc.text(`${(results.heatLossTotalW / 1000).toFixed(2)} kW`, margin + 3, y + 12);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  doc.text(`Flux: ${results.heatFluxWm2} W/m²`, margin + 3, y + 15.5);
-
-  // Card 2: Surface Temp & Safety
-  const c2X = margin + cardW + 3;
-  doc.roundedRect(c2X, y, cardW, cardH, 2, 2, 'FD');
-  doc.setFontSize(7);
-  doc.setTextColor(100, 116, 139);
-  doc.text('SUHU PERMUKAAN', c2X + 3, y + 5);
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  if (results.personnelProtectionStatus === 'safe') {
-    doc.setTextColor(22, 163, 74); // green
-  } else if (results.personnelProtectionStatus === 'warning') {
-    doc.setTextColor(217, 119, 6); // amber
-  } else {
-    doc.setTextColor(220, 38, 38); // red
-  }
-  doc.text(`${results.outerSurfaceTempC}°C`, c2X + 3, y + 12);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  doc.text(results.personnelProtectionStatus === 'safe' ? 'Aman Sentuh (ASTM)' : 'Peringatan Suhu Tinggi', c2X + 3, y + 15.5);
-
-  // Card 3: Recommended Insulation / Status
-  const c3X = c2X + cardW + 3;
-  doc.roundedRect(c3X, y, cardW, cardH, 2, 2, 'FD');
-  doc.setFontSize(7);
-  doc.setTextColor(100, 116, 139);
-  doc.text(
-    inputs.hasInsulation === false
-      ? 'STATUS ISOLASI'
-      : inputs.mode === 'design'
-      ? 'REKOMENDASI ISOLASI'
-      : 'EFEKTIF ISOLASI',
-    c3X + 3,
-    y + 5
-  );
-  doc.setFontSize(inputs.hasInsulation === false ? 9.5 : 11);
-  doc.setFont('helvetica', 'bold');
-  if (inputs.hasInsulation === false) {
-    doc.setTextColor(217, 119, 6); // amber
-    doc.text('Tanpa Isolasi (Bare)', c3X + 3, y + 12);
-  } else {
-    doc.setTextColor(15, 23, 42);
-    doc.text(`${results.recommendedInsulationThicknessMm} mm`, c3X + 3, y + 12);
-  }
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text(
-    inputs.hasInsulation === false
-      ? `Rek. Pasang: ${results.recommendedInsulationThicknessMm} mm`
-      : `Tebal Shell: ${results.recommendedDuctThicknessMm} mm`,
-    c3X + 3,
-    y + 15.5
+  const surfaceColor = results.personnelProtectionStatus === 'safe' ? SAFE : results.personnelProtectionStatus === 'warning' ? WARN : BRAND;
+  drawCard(
+    c2X,
+    tr('Suhu Permukaan', 'Surface Temperature'),
+    `${results.outerSurfaceTempC}°C`,
+    results.personnelProtectionStatus === 'safe' ? tr('Aman disentuh (ASTM)', 'Safe to touch (ASTM)') : tr('Peringatan suhu tinggi', 'High temperature warning'),
+    surfaceColor
   );
 
-  // Card 4: Financial Annual Cost
-  const c4X = c3X + cardW + 3;
-  doc.roundedRect(c4X, y, cardW, cardH, 2, 2, 'FD');
-  doc.setFontSize(7);
-  doc.setTextColor(100, 116, 139);
-  doc.text('BIAYA ENERGI / THN', c4X + 3, y + 5);
-  doc.setFontSize(9.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(15, 23, 42);
-  const costJt = (results.financial.annualCostIdr / 1000000).toFixed(1);
-  doc.text(`Rp ${costJt} Juta`, c4X + 3, y + 12);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  doc.text(`Emisi: ${results.financial.co2EmissionsTonsPerYear} T CO₂`, c4X + 3, y + 15.5);
+  const card3Label = inputs.hasInsulation === false
+    ? tr('Status Isolasi', 'Insulation Status')
+    : inputs.mode === 'design'
+    ? tr('Rekomendasi Isolasi', 'Recommended Insulation')
+    : tr('Efektif Isolasi', 'Effective Insulation');
+  const card3Value = inputs.hasInsulation === false ? 'Bare Duct' : `${results.recommendedInsulationThicknessMm} mm`;
+  const card3Sub =
+    inputs.hasInsulation === false
+      ? `${tr('Rek. pasang', 'Recommended')}: ${results.recommendedInsulationThicknessMm} mm`
+      : `${tr('Tebal shell min', 'Min. shell thickness')}: ${results.recommendedDuctThicknessMm} mm`;
+  drawCard(c3X, card3Label, card3Value, card3Sub, inputs.hasInsulation === false ? WARN : INK);
 
-  y += cardH + 6;
+  drawCard(
+    c4X,
+    tr('Biaya Energi / Tahun', 'Energy Cost / Year'),
+    `Rp ${(results.financial.annualCostIdr / 1000000).toFixed(1)} ${tr('Jt', 'M')}`,
+    `${tr('Emisi', 'Emissions')}: ${results.financial.co2EmissionsTonsPerYear} Ton CO2/${tr('thn', 'yr')}`
+  );
 
-  // Embedded Canvas Image if provided
+  y += cardH + 8;
+
+  // --- Cross-section snapshot ---
   if (canvasElement) {
     try {
       const imgData = canvasElement.toDataURL('image/png');
-      const imgWidth = pageWidth - 2 * margin;
-      const imgHeight = 65;
-      doc.addImage(imgData, 'PNG', margin, y, imgWidth, imgHeight);
-      y += imgHeight + 6;
+      const imgH = 62;
+      setColor('draw', LINE);
+      doc.setLineWidth(0.25);
+      doc.roundedRect(margin, y, contentW, imgH, 2, 2, 'S');
+      doc.addImage(imgData, 'PNG', margin + 1, y + 1, contentW - 2, imgH - 2);
+      y += imgH + 8;
     } catch (e) {
       console.warn('Could not embed canvas to PDF', e);
     }
   }
 
-  // Section 1: Parameter Operasi & Desain
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(15, 23, 42);
-  doc.text('1. PARAMETER OPERASI, GEOMETRI & LINGKUNGAN', margin, y);
-  y += 4;
+  // --- Section 1: Parameters ---
+  y = sectionTitle(tr('1. Parameter Operasi, Geometri & Lingkungan', '1. Operating Parameters, Geometry & Environment'), y);
 
-  doc.setFillColor(241, 245, 249);
-  doc.rect(margin, y, pageWidth - 2 * margin, 28, 'F');
-  doc.setDrawColor(226, 232, 240);
-  doc.rect(margin, y, pageWidth - 2 * margin, 28, 'S');
+  const paramRows = 5;
+  const paramBoxH = paramRows * 5.2 + 6;
+  setColor('fill', PANEL);
+  setColor('draw', LINE);
+  doc.roundedRect(margin, y, contentW, paramBoxH, 2, 2, 'FD');
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(51, 65, 85);
-
-  const col1 = margin + 4;
-  const col2 = margin + 65;
-  const col3 = margin + 125;
+  const pCol1 = margin + 5;
+  const pCol2 = margin + contentW * 0.37;
+  const pCol3 = margin + contentW * 0.7;
+  const pStartY = y + 6.5;
+  const lineH = 5.2;
 
   const shapeStr =
     inputs.shape === 'cylindrical'
-      ? `Silinder / Pipa (ID: ${inputs.innerDiameterMm} mm)`
+      ? `${tr('Silinder / Pipa', 'Cylinder / Pipe')} (ID: ${inputs.innerDiameterMm} mm)`
       : inputs.shape === 'kiln'
       ? `Rotary Kiln (ID: ${inputs.innerDiameterMm} mm)`
-      : `Ducting Persegi (${inputs.widthMm} x ${inputs.heightMm} mm)`;
+      : `${tr('Ducting Persegi', 'Rectangular Ducting')} (${inputs.widthMm} × ${inputs.heightMm} mm)`;
 
-  doc.text(`• Bentuk: ${shapeStr}`, col1, y + 5);
-  doc.text(`• Panjang Ducting: ${inputs.lengthM} meter`, col1, y + 10);
-  doc.text(`• Plat Shell: ${ductMaterial.name.split('(')[0]} (${inputs.ductThicknessMm} mm)`, col1, y + 15);
-  doc.text(`• Sistem Isolasi: ${inputs.hasInsulation === false ? 'Bare Duct (Tanpa Isolasi)' : `${inputs.layers.length} Lapisan`}`, col1, y + 20);
-  doc.text(`• Tekanan Operasi: ${inputs.internalPressureBar} bar (Gauge)`, col1, y + 25);
+  const col1Lines = [
+    `${tr('Bentuk', 'Shape')}: ${shapeStr}`,
+    `${tr('Panjang ducting', 'Duct length')}: ${inputs.lengthM} m`,
+    `${tr('Plat shell', 'Shell plate')}: ${ductMaterial.name.split('(')[0].trim()} (${inputs.ductThicknessMm} mm)`,
+    `${tr('Sistem isolasi', 'Insulation system')}: ${
+      inputs.hasInsulation === false ? tr('Bare Duct (tanpa isolasi)', 'Bare Duct (uninsulated)') : `${inputs.layers.length} ${tr('lapisan', 'layer(s)')}`
+    }`,
+    `${tr('Tekanan operasi', 'Operating pressure')}: ${inputs.internalPressureBar} bar (gauge)`,
+  ];
+  const col2Lines = [
+    `${tr('Jenis fluida', 'Fluid type')}: ${inputs.fluidType.replace(/_/g, ' ')}`,
+    `${tr('Suhu fluida (T_f)', 'Fluid temperature (T_f)')}: ${inputs.fluidTempC} °C`,
+    `${tr('Kecepatan fluida', 'Fluid velocity')}: ${inputs.fluidVelocityMs} m/s`,
+    `${tr('Rezim aliran', 'Flow regime')}: ${trVal(FLOW_TYPE_EN, results.flowType)}`,
+    `Reynolds (Re): ${results.reynoldsNumber.toLocaleString()}`,
+  ];
+  const col3Lines = [
+    `${tr('Suhu lingkungan', 'Ambient temperature')}: ${inputs.ambientTempC} °C`,
+    `${tr('Kecepatan angin', 'Wind speed')}: ${inputs.windSpeedMs} m/s`,
+    `${tr('Emisivitas permukaan', 'Surface emissivity')}: ${inputs.externalEmissivity}`,
+    inputs.mode === 'design'
+      ? `${tr('Target suhu luar', 'Target surface temp')}: ${inputs.targetOuterTempC} °C`
+      : `${tr('Suhu luar terukur', 'Measured surface temp')}: ${inputs.measuredOuterTempC} °C`,
+  ];
 
-  doc.text(`• Jenis Fluida: ${inputs.fluidType.toUpperCase()}`, col2, y + 5);
-  doc.text(`• Suhu Fluida (T_f): ${inputs.fluidTempC} °C`, col2, y + 10);
-  doc.text(`• Kecepatan Fluida: ${inputs.fluidVelocityMs} m/s`, col2, y + 15);
-  doc.text(`• Rezim Aliran: ${results.flowType}`, col2, y + 20);
-  doc.text(`• Reynolds (Re): ${results.reynoldsNumber.toLocaleString()}`, col2, y + 25);
-
-  doc.text(`• Suhu Lingkungan (Ambient): ${inputs.ambientTempC} °C`, col3, y + 5);
-  doc.text(`• Kecepatan Angin: ${inputs.windSpeedMs} m/s`, col3, y + 10);
-  doc.text(`• Emisivitas Permukaan: ${inputs.externalEmissivity}`, col3, y + 15);
-  if (inputs.mode === 'design') {
-    doc.text(`• Target Suhu Luar: ${inputs.targetOuterTempC} °C`, col3, y + 20);
-  } else {
-    doc.text(`• Suhu Luar Terukur: ${inputs.measuredOuterTempC} °C`, col3, y + 20);
-  }
-
-  y += 32;
-
-  // Section 2: Spesifikasi Lapisan Dinding & Profil Termal
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(15, 23, 42);
-  doc.text('2. SPESIFIKASI LAPISAN DINDING & DISTRIBUSI TEMPERATUR', margin, y);
-  y += 4;
-
-  // Table header
-  doc.setFillColor(30, 41, 59);
-  doc.rect(margin, y, pageWidth - 2 * margin, 6, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-
-  doc.text('Posisi', margin + 3, y + 4.2);
-  doc.text('Nama Lapisan / Material', margin + 30, y + 4.2);
-  doc.text('Tebal (mm)', margin + 95, y + 4.2);
-  doc.text('T_Dalam (°C)', margin + 120, y + 4.2);
-  doc.text('T_Luar (°C)', margin + 145, y + 4.2);
-  doc.text('Status Termal', margin + 165, y + 4.2);
-
-  y += 6;
-
-  // Table rows
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-
-  results.layerResults.forEach((lyr, index) => {
-    if (index % 2 === 0) {
-      doc.setFillColor(248, 250, 252);
-      doc.rect(margin, y, pageWidth - 2 * margin, 5.5, 'F');
-    }
-    doc.setTextColor(15, 23, 42);
-
-    const posLabel =
-      lyr.position === 'inside'
-        ? 'Refractory Dalam'
-        : lyr.position === 'duct_wall'
-        ? 'Ducting Shell'
-        : 'Isolasi Luar';
-
-    doc.text(posLabel, margin + 3, y + 4);
-    doc.text(lyr.name.length > 34 ? lyr.name.slice(0, 32) + '...' : lyr.name, margin + 30, y + 4);
-    doc.text(`${lyr.thicknessMm.toFixed(1)}`, margin + 95, y + 4);
-    doc.text(`${lyr.tInnerC.toFixed(1)}`, margin + 120, y + 4);
-    doc.text(`${lyr.tOuterC.toFixed(1)}`, margin + 145, y + 4);
-
-    if (lyr.isOverheating) {
-      doc.setTextColor(220, 38, 38);
-      doc.text(`Overheat (> ${lyr.maxServiceTempC}°C)`, margin + 165, y + 4);
-    } else {
-      doc.setTextColor(22, 163, 74);
-      doc.text('Aman', margin + 165, y + 4);
-    }
-
-    y += 5.5;
+  [col1Lines, col2Lines, col3Lines].forEach((lines, i) => {
+    const cx = [pCol1, pCol2, pCol3][i];
+    lines.forEach((line, idx) => bodyLine(`•  ${line}`, cx, pStartY + idx * lineH));
   });
 
-  y += 4;
+  y += paramBoxH + 8;
 
-  // Section 3: Diagnostic / Engineering Assessment Notes
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(15, 23, 42);
-  doc.text('3. KESIMPULAN REKAYASA & REKOMENDASI AUDIT', margin, y);
-  y += 4;
+  // --- Section 2: Wall layer table ---
+  y = sectionTitle(tr('2. Spesifikasi Lapisan Dinding & Distribusi Temperatur', '2. Wall Layer Specification & Temperature Distribution'), y);
 
-  const boxHeight = results.diagnostic ? 28 : 24;
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.rect(margin, y, pageWidth - 2 * margin, boxHeight, 'FD');
+  const tableColX = {
+    pos: margin + 4,
+    name: margin + 32,
+    thick: margin + 98,
+    tIn: margin + 122,
+    tOut: margin + 146,
+    status: margin + 168,
+  };
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(30, 41, 59);
+  const drawTableHeader = (yy: number, headers: [string, string, string, string, string, string]) => {
+    setColor('fill', DARK_BG);
+    doc.rect(margin, yy, contentW, 7, 'F');
+    setColor('text', [255, 255, 255]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.text(headers[0], tableColX.pos, yy + 4.7);
+    doc.text(headers[1], tableColX.name, yy + 4.7);
+    doc.text(headers[2], tableColX.thick, yy + 4.7);
+    doc.text(headers[3], tableColX.tIn, yy + 4.7);
+    doc.text(headers[4], tableColX.tOut, yy + 4.7);
+    doc.text(headers[5], tableColX.status, yy + 4.7);
+    return yy + 7;
+  };
 
-  let note1 = `• Status Keselamatan: ${results.statusMessage}`;
-  let note2 = `• Efisiensi Termal: h_in = ${results.internalConvectionHi} W/m²·K, h_out = ${results.externalConvectionHo} W/m²·K, h_rad = ${results.radiationHr} W/m²·K.`;
-  let note3 = `• Ketebalan Shell Plat: Terpasang ${inputs.ductThicknessMm} mm vs min. kode ${results.recommendedDuctThicknessMm} mm (Safety factor = ${results.ductSafetyFactor}x).`;
+  y = drawTableHeader(y, [
+    tr('Posisi', 'Position'),
+    tr('Nama Lapisan / Material', 'Layer Name / Material'),
+    tr('Tebal (mm)', 'Thickness (mm)'),
+    tr('T. Dalam (°C)', 'T. Inner (°C)'),
+    tr('T. Luar (°C)', 'T. Outer (°C)'),
+    'Status',
+  ]);
 
-  doc.text(note1, margin + 4, y + 5);
-  doc.text(note2, margin + 4, y + 10);
-  doc.text(note3, margin + 4, y + 15);
+  const rowH = 6.5;
+  doc.setFontSize(7.3);
+  results.layerResults.forEach((lyr, index) => {
+    if (index % 2 === 0) {
+      setColor('fill', PANEL);
+      doc.rect(margin, y, contentW, rowH, 'F');
+    }
+    const posLabel =
+      lyr.position === 'inside'
+        ? tr('Refraktori Dalam', 'Inner Refractory')
+        : lyr.position === 'duct_wall'
+        ? 'Ducting Shell'
+        : tr('Isolasi Luar', 'Outer Insulation');
+
+    doc.setFont('helvetica', 'normal');
+    setColor('text', SUBTLE);
+    doc.text(posLabel, tableColX.pos, y + 4.4);
+    setColor('text', INK);
+    doc.text(lyr.name.length > 36 ? lyr.name.slice(0, 34) + '…' : lyr.name, tableColX.name, y + 4.4);
+    doc.text(lyr.thicknessMm.toFixed(1), tableColX.thick, y + 4.4);
+    doc.text(lyr.tInnerC.toFixed(1), tableColX.tIn, y + 4.4);
+    doc.text(lyr.tOuterC.toFixed(1), tableColX.tOut, y + 4.4);
+
+    doc.setFont('helvetica', 'bold');
+    if (lyr.isOverheating) {
+      setColor('text', BRAND);
+      doc.text(`Overheat >${lyr.maxServiceTempC}°C`, tableColX.status, y + 4.4);
+    } else {
+      setColor('text', SAFE);
+      doc.text(tr('Aman', 'Safe'), tableColX.status, y + 4.4);
+    }
+    y += rowH;
+  });
+
+  setColor('draw', LINE);
+  doc.setLineWidth(0.25);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 8;
+
+  // --- Section 3: Engineering summary ---
+  y = sectionTitle(tr('3. Kesimpulan Rekayasa & Rekomendasi', '3. Engineering Summary & Recommendations'), y);
+
+  const notesLines: Array<{ text: string; bold?: boolean }> = [
+    { text: `${tr('Status keselamatan', 'Safety status')}: ${getSafetyStatusMessage(results.personnelProtectionStatus, results.outerSurfaceTempC, lang)}` },
+    {
+      text: `${tr('Koefisien pindah panas', 'Heat transfer coefficients')}: h_${tr('dalam', 'inside')} = ${results.internalConvectionHi} W/m²·K, h_${tr('luar', 'outside')} = ${results.externalConvectionHo} W/m²·K, h_${tr('radiasi', 'radiation')} = ${results.radiationHr} W/m²·K.`,
+    },
+    {
+      text: `${tr('Tebal shell', 'Shell thickness')}: ${tr('terpasang', 'installed')} ${inputs.ductThicknessMm} mm vs. ${tr('minimum kode', 'code minimum')} ${results.recommendedDuctThicknessMm} mm (safety factor ${results.ductSafetyFactor}×).`,
+    },
+  ];
 
   if (results.diagnostic) {
-    const diagNote1 = `• Diagnosa Keausan: Isolasi ${results.diagnostic.insulationWearPercent}% degradasi (Tebal efektif: ${results.diagnostic.effectiveThicknessMm} mm, Efisiensi: ${results.diagnostic.insulationEfficiencyPercent}%). Plat: ${results.diagnostic.ductIntegrityStatus}.`;
-    const diagNote2 = `• Kebutuhan Isolasi: ${results.diagnostic.insulationUrgency} | Rekomendasi: ${results.diagnostic.recommendations[0] || 'Lakukan audit berkala.'}`;
-    doc.text(diagNote1, margin + 4, y + 20);
-    doc.text(diagNote2, margin + 4, y + 25);
+    notesLines.push({
+      text: `${tr('Diagnosa keausan', 'Wear diagnosis')}: ${tr('isolasi terdegradasi', 'insulation degraded')} ${results.diagnostic.insulationWearPercent}% (${tr('tebal efektif', 'effective thickness')} ${results.diagnostic.effectiveThicknessMm} mm, ${tr('efisiensi', 'efficiency')} ${results.diagnostic.insulationEfficiencyPercent}%). ${tr('Plat', 'Plate')}: ${trVal(DUCT_INTEGRITY_EN, results.diagnostic.ductIntegrityStatus)}.`,
+    });
+    notesLines.push({
+      text: `${tr('Kebutuhan isolasi', 'Insulation need')}: ${trVal(INSULATION_URGENCY_EN, results.diagnostic.insulationUrgency)}. ${results.diagnostic.recommendations[0] || tr('Lakukan audit berkala.', 'Perform periodic audits.')}`,
+    });
   } else {
-    const potNote = `• Potensi Efisiensi Biaya: Penghematan hingga Rp ${(results.financial.potentialSavingsIdr / 1000000).toFixed(1)} Juta/tahun dapat dicapai dengan ketebalan isolasi optimal.`;
-    doc.text(potNote, margin + 4, y + 20);
+    notesLines.push({
+      text: `${tr('Potensi efisiensi biaya', 'Cost efficiency potential')}: ${tr('penghematan hingga', 'savings of up to')} Rp ${(results.financial.potentialSavingsIdr / 1000000).toFixed(1)} ${tr('juta/tahun dapat dicapai dengan ketebalan isolasi optimal.', 'million/year achievable with optimal insulation thickness.')}`,
+    });
   }
 
-  // Footer page number & signature line
-  if (isCertified) {
-    // Official Engineer Signature & Approval Box
-    const signY = pageHeight - 27;
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(203, 213, 225);
-    doc.rect(margin, signY, pageWidth - 2 * margin, 17, 'FD');
+  const noteLineH = 6;
+  const wrappedNotes = notesLines.flatMap((n) => doc.splitTextToSize(`•  ${n.text}`, contentW - 10));
+  const notesBoxH = wrappedNotes.length * noteLineH + 6;
 
-    doc.setFontSize(6.5);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(15, 23, 42);
-    doc.text('PENGESAHAN DOKUMEN REKAYASA (ENGINEERING SIGN-OFF)', margin + 3, signY + 4.5);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(71, 85, 105);
-    doc.text(
-      `Lead Auditor / Specialist: ${metadata?.engineerName || 'Ir. Lead Thermal Engineer, ST, IPM'}`,
-      margin + 3,
-      signY + 9
-    );
-    doc.text(
-      `Nomor Registrasi: ${metadata?.reportNumber || `CERT-TD-${Date.now().toString().slice(-6)}`}`,
-      margin + 3,
-      signY + 13.5
-    );
+  setColor('fill', PANEL);
+  setColor('draw', LINE);
+  doc.roundedRect(margin, y, contentW, notesBoxH, 2, 2, 'FD');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  setColor('text', INK);
+  wrappedNotes.forEach((line: string, idx: number) => {
+    doc.text(line, margin + 5, y + 6 + idx * noteLineH);
+  });
 
-    doc.text('Status: TERVALIDASI & MEMENUHI STANDAR KESELAMATAN', pageWidth - margin - 75, signY + 9);
-    doc.text(
-      `Verifikasi Dokumen: HASH-${Date.now().toString(36).toUpperCase()}-VERIFIED`,
-      pageWidth - margin - 75,
-      signY + 13.5
-    );
-  } else {
-    // Faint diagonal watermark for draft sample
+  y += notesBoxH + 8;
+
+  // Faint watermark for the free draft sample, not for certified/paid reports
+  if (!isCertified) {
     try {
       doc.saveGraphicsState();
-      doc.setTextColor(215, 215, 220);
-      doc.setFontSize(22);
+      setColor('text', [222, 222, 226]);
+      doc.setFontSize(24);
       doc.setFont('helvetica', 'bold');
-      doc.text('DRAFT SAMPLE • WATERMARKED PREVIEW', 25, 145, { angle: 36 });
-      doc.text('GUNAKAN PAY PER REPORT UNTUK LAPORAN RESMI', 15, 175, { angle: 36 });
+      doc.text('DRAFT SAMPLE', pageWidth / 2, pageHeight / 2, { angle: 32, align: 'center' });
       doc.restoreGraphicsState();
     } catch {
       // ignore
     }
   }
 
-  doc.setFontSize(7);
-  doc.setTextColor(148, 163, 184);
-  doc.text('Divalidasi oleh Sistem Analisa Termal ThermoDuct | Standar Referensi: ASTM C1055, ASME B31.3, SMACNA', margin, pageHeight - 6);
-  doc.text('Hal 1 / 2', pageWidth - margin - 15, pageHeight - 6);
+  footer(tr('Halaman 1 / 2', 'Page 1 / 2'));
 
-  // ==========================================
-  // PAGE 2: STATIONARY HEAT TRANSITION CALCULATION & WALL TEMPERATURE PROFILE
-  // (Standard Refractory & Industrial Insulation Format after ASTM C680 / VDI-Wärmeatlas)
-  // ==========================================
+  // ==========================================================
+  // PAGE 2 — WALL TEMPERATURE PROFILE (ASTM C680 / VDI-Wärmeatlas)
+  // ==========================================================
   doc.addPage('a4', 'portrait');
-  let y2 = 14;
+  let y2 = margin;
 
-  // Header Banner Page 2
-  doc.setFillColor(15, 23, 42); // slate-900
-  doc.rect(margin, y2, pageWidth - 2 * margin, 22, 'F');
-
-  doc.setTextColor(255, 255, 255);
+  const header2H = 20;
+  setColor('fill', DARK_BG);
+  doc.rect(0, 0, pageWidth, header2H, 'F');
+  setColor('text', [255, 255, 255]);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text('STATIONARY HEAT TRANSITION CALCULATION', margin + 6, y2 + 7);
-
+  doc.setFontSize(12);
+  doc.text('Stationary Heat Transition Calculation', margin, 9.5);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
-  doc.setTextColor(148, 163, 184);
+  setColor('text', FAINT);
   doc.text(
-    `Standard: ASTM C 680-89 & VDI-Wärmeatlas | File Ref: TD-${Date.now().toString().slice(-6)} | Client: ${metadata?.clientName || 'General Industrial'}`,
-    margin + 6,
-    y2 + 13
-  );
-  doc.text(
-    `Equip: ${metadata?.projectName || 'Industrial Ducting & Refractory System'} | Status: ${isCertified ? 'RESMI & TERVALIDASI' : 'DRAFT KALKULASI'}`,
-    margin + 6,
-    y2 + 18
+    `Standard: ASTM C680-89 & VDI-Wärmeatlas  ·  ${metadata?.projectName || 'Industrial Ducting & Refractory System'}`,
+    margin,
+    15.5
   );
 
-  y2 += 26;
+  y2 = header2H + 9;
 
-  // Boundary Conditions Box (External & Internal)
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.rect(margin, y2, pageWidth - 2 * margin, 24, 'FD');
+  // --- Boundary conditions ---
+  const boundBoxH = 24;
+  setColor('fill', PANEL);
+  setColor('draw', LINE);
+  doc.roundedRect(margin, y2, contentW, boundBoxH, 2, 2, 'FD');
+
+  const bCol1 = margin + 5;
+  const bCol2 = margin + contentW * 0.52;
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(30, 41, 59);
-  doc.text('KONDISI EKSTERNAL (EXTERNAL CONDITIONS):', margin + 4, y2 + 5.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`• Kecepatan Angin (Wind velocity): ${inputs.windSpeedMs} m/s`, margin + 4, y2 + 10.5);
-  doc.text(`• Derajat Emisi Permukaan (Emission grade): ${inputs.externalEmissivity}`, margin + 4, y2 + 15);
-  doc.text(
-    `• Koef. Pindah Panas Luar (h_o): ${(results.externalConvectionHo + results.radiationHr).toFixed(2)} W/m²·K (ASTM C 680)`,
-    margin + 4,
-    y2 + 19.5
-  );
+  doc.setFontSize(7.8);
+  setColor('text', INK);
+  doc.text(tr('Kondisi Eksternal', 'External Conditions'), bCol1, y2 + 6);
+  doc.text(tr('Kondisi Internal & Fluida', 'Internal & Fluid Conditions'), bCol2, y2 + 6);
 
-  const colExtMid = margin + 95;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(30, 41, 59);
-  doc.text('KONDISI INTERNAL & FLUIDA (INTERNAL CONDITIONS):', colExtMid, y2 + 5.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`• Suhu Fluida Gas (Internal Temp): ${inputs.fluidTempC} °C`, colExtMid, y2 + 10.5);
-  doc.text(`• Koef. Konveksi Internal (h_i): ${results.internalConvectionHi.toFixed(1)} W/m²·K (VDI-Wärmeatlas)`, colExtMid, y2 + 15);
-  doc.text(
-    `• Fluks Kehilangan Panas (Heat Loss): ${Math.round(results.heatFluxWm2)} Watt/m²`,
-    colExtMid,
-    y2 + 19.5
-  );
+  bodyLine(`•  ${tr('Kecepatan angin', 'Wind speed')}: ${inputs.windSpeedMs} m/s`, bCol1, y2 + 11.5);
+  bodyLine(`•  ${tr('Derajat emisi permukaan', 'Surface emissivity')}: ${inputs.externalEmissivity}`, bCol1, y2 + 16.5);
+  bodyLine(`•  ${tr('h_luar total', 'Total h_outside')}: ${(results.externalConvectionHo + results.radiationHr).toFixed(2)} W/m²·K`, bCol1, y2 + 21.5);
 
-  y2 += 28;
+  bodyLine(`•  ${tr('Suhu fluida internal', 'Internal fluid temperature')}: ${inputs.fluidTempC} °C`, bCol2, y2 + 11.5);
+  bodyLine(`•  ${tr('h_dalam (konveksi)', 'h_inside (convection)')}: ${results.internalConvectionHi.toFixed(1)} W/m²·K`, bCol2, y2 + 16.5);
+  bodyLine(`•  ${tr('Fluks kehilangan panas', 'Heat loss flux')}: ${Math.round(results.heatFluxWm2)} W/m²`, bCol2, y2 + 21.5);
 
-  // Title for the Graph
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(15, 23, 42);
-  doc.text('DIAGRAM GRADIEN SUHU PENAMPANG DINDING (WALL TEMPERATURE PROFILE)', margin, y2);
-  y2 += 4;
+  y2 += boundBoxH + 8;
 
-  // ==========================================
-  // VECTOR DRAWING OF TEMPERATURE PROFILE GRAPH
-  // ==========================================
-  const gWidth = pageWidth - 2 * margin; // e.g. 210 - 28 = 182 mm
-  const gHeight = 78; // height in mm
+  // --- Wall temperature profile diagram ---
+  y2 = sectionTitle(tr('Diagram Gradien Suhu Penampang Dinding', 'Wall Cross-Section Temperature Gradient Diagram'), y2);
+
+  const gWidth = contentW;
+  const gHeight = 76;
   const gX = margin;
   const gY = y2;
 
-  // Background for graph
-  doc.setFillColor(10, 15, 26);
-  doc.rect(gX, gY, gWidth, gHeight, 'F');
-  doc.setDrawColor(51, 65, 85);
+  setColor('fill', [10, 15, 26]);
+  doc.roundedRect(gX, gY, gWidth, gHeight, 2, 2, 'F');
+  setColor('draw', [51, 65, 85]);
   doc.setLineWidth(0.3);
-  doc.rect(gX, gY, gWidth, gHeight, 'S');
+  doc.roundedRect(gX, gY, gWidth, gHeight, 2, 2, 'S');
 
-  // Coordinates inside graph
   const gPadLeft = 16;
   const gPadRight = 12;
-  const gPadTop = 10;
+  const gPadTop = 12;
   const gPadBottom = 16;
   const plotW = gWidth - gPadLeft - gPadRight;
   const plotH = gHeight - gPadTop - gPadBottom;
 
-  const maxT = Math.max(inputs.fluidTempC, 100);
-  const yMaxVal = Math.ceil(maxT / 200) * 200;
+  const maxTVal = Math.max(inputs.fluidTempC, 100);
+  const yMaxVal = Math.ceil(maxTVal / 200) * 200;
   const totalThick = results.layerResults.reduce((s, l) => s + l.thicknessMm, 0);
 
-  // Y-axis gridlines
   const yTickVals = [0, 200, 400, 600, 800, 1000, 1200, 1400, 1600].filter((v) => v <= yMaxVal);
-  doc.setDrawColor(30, 41, 59);
+  setColor('draw', [30, 41, 59]);
   doc.setLineWidth(0.2);
   doc.setFontSize(5.5);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(148, 163, 184);
+  setColor('text', FAINT);
 
   yTickVals.forEach((tickVal) => {
     const yNorm = (tickVal / yMaxVal) * plotH;
@@ -504,14 +489,13 @@ export function exportCalculationToPDF(
     doc.text(`${tickVal}`, gX + gPadLeft - 2, lineY + 1.2, { align: 'right' });
   });
 
-  // Layer colored blocks
   let cumMm = 0;
-  const layerColors = [
-    [220, 38, 38], // Red
-    [234, 88, 12], // Orange
-    [16, 185, 129], // Green
-    [14, 165, 233], // Blue
-    [100, 116, 139], // Slate
+  const layerColors: Array<[number, number, number]> = [
+    [239, 68, 68],
+    [234, 88, 12],
+    [16, 185, 129],
+    [56, 189, 248],
+    [100, 116, 139],
   ];
 
   results.layerResults.forEach((lyr, idx) => {
@@ -524,32 +508,26 @@ export function exportCalculationToPDF(
     const blockW = Math.max(0.5, blockX2 - blockX1);
 
     const c = layerColors[idx % layerColors.length];
-    doc.setFillColor(c[0], c[1], c[2]);
+    setColor('fill', c);
     doc.rect(blockX1, gY + gPadTop, blockW, plotH, 'F');
-    doc.setDrawColor(255, 255, 255);
-    doc.setLineWidth(0.2);
+    setColor('draw', [10, 15, 26]);
+    doc.setLineWidth(0.3);
     doc.rect(blockX1, gY + gPadTop, blockW, plotH, 'S');
 
-    // Vertical text in block if wide enough
-    if (blockW > 7) {
+    if (blockW > 8) {
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5);
-      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(5.2);
+      setColor('text', [255, 255, 255]);
       const labelText = `${Math.round(lyr.thicknessMm)} mm ${lyr.name.slice(0, 20)}`;
       try {
-        doc.text(labelText, blockX1 + blockW / 2, gY + gPadTop + plotH / 2, {
-          align: 'center',
-          angle: 90,
-        });
+        doc.text(labelText, blockX1 + blockW / 2, gY + gPadTop + plotH / 2, { align: 'center', angle: 90 });
       } catch {
         doc.text(`${Math.round(lyr.thicknessMm)}mm`, blockX1 + 1, gY + gPadTop + plotH / 2);
       }
     }
   });
 
-  // Polyline for temperature curve
   const curvePoints: Array<{ x: number; y: number; temp: number }> = [];
-  // Inner wall point (x=0)
   const x0 = gX + gPadLeft;
   const y0 = gY + gPadTop + plotH - (results.innerWallTempC / yMaxVal) * plotH;
   curvePoints.push({ x: x0, y: y0, temp: results.innerWallTempC });
@@ -562,44 +540,39 @@ export function exportCalculationToPDF(
     curvePoints.push({ x: ptX, y: ptY, temp: lyr.tOuterC });
   });
 
-  // Draw temperature lines
-  doc.setDrawColor(255, 255, 255);
+  setColor('draw', [255, 255, 255]);
   doc.setLineWidth(0.8);
   for (let i = 0; i < curvePoints.length - 1; i++) {
     doc.line(curvePoints[i].x, curvePoints[i].y, curvePoints[i + 1].x, curvePoints[i + 1].y);
   }
 
-  // Draw point markers and callout tags
   curvePoints.forEach((pt) => {
-    // Circle marker
-    doc.setFillColor(255, 255, 255);
-    doc.circle(pt.x, pt.y, 1.2, 'F');
+    setColor('fill', [255, 255, 255]);
+    doc.circle(pt.x, pt.y, 1.1, 'F');
 
-    // Callout box with temperature text
     const boxW = 14;
     const boxH = 5;
     const boxX = Math.max(gX + gPadLeft, Math.min(gX + gPadLeft + plotW - boxW, pt.x - boxW / 2));
     const boxY = Math.max(gY + gPadTop + 1, pt.y - 6.5);
 
-    doc.setFillColor(15, 23, 42);
-    doc.setDrawColor(255, 255, 255);
+    setColor('fill', DARK_BG);
+    setColor('draw', [255, 255, 255]);
     doc.setLineWidth(0.3);
     doc.roundedRect(boxX, boxY, boxW, boxH, 0.8, 0.8, 'FD');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(4.5);
-    doc.setTextColor(255, 255, 255);
+    setColor('text', [255, 255, 255]);
     doc.text(`${Math.round(pt.temp)} °C`, boxX + boxW / 2, boxY + 3.4, { align: 'center' });
   });
 
-  // X-Axis tick marks and labels (Wall thickness [mm])
-  doc.setDrawColor(148, 163, 184);
+  setColor('draw', FAINT);
   doc.setLineWidth(0.4);
   doc.line(gX + gPadLeft, gY + gPadTop + plotH, gX + gPadLeft + plotW, gY + gPadTop + plotH);
 
   doc.setFontSize(5);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(203, 213, 225);
+  setColor('text', [203, 213, 225]);
   doc.text('0', gX + gPadLeft, gY + gPadTop + plotH + 3.5, { align: 'center' });
 
   let cumTickMm = 0;
@@ -612,154 +585,186 @@ export function exportCalculationToPDF(
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(5.5);
-  doc.setTextColor(148, 163, 184);
-  doc.text('Wall thickness [mm]', gX + gPadLeft + plotW / 2, gY + gPadTop + plotH + 7, {
-    align: 'center',
-  });
+  setColor('text', FAINT);
+  doc.text('Wall thickness [mm]', gX + gPadLeft + plotW / 2, gY + gPadTop + plotH + 7, { align: 'center' });
 
-  // Top/Bottom graph notes matching vendor layout
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5.5);
-  doc.setTextColor(239, 68, 68);
-  doc.text(`${inputs.fluidTempC} °C internal temperature`, gX + gPadLeft + 2, gY + gPadTop - 2);
+  doc.setFontSize(5.8);
+  setColor('text', [248, 113, 113]);
+  doc.text(`${inputs.fluidTempC} °C internal temperature`, gX + gPadLeft, gY + 7);
 
-  doc.setTextColor(245, 158, 11);
-  doc.text(
-    `Heat loss external: ${Math.round(results.heatFluxWm2)} Watt/m²`,
-    gX + gPadLeft,
-    gY + gHeight - 2
-  );
+  setColor('text', [251, 191, 36]);
+  doc.text(`Heat loss external: ${Math.round(results.heatFluxWm2)} W/m²`, gX + gPadLeft, gY + gHeight - 2);
 
-  doc.setTextColor(56, 189, 248);
-  doc.text(
-    `${inputs.ambientTempC} °C ambient temperature`,
-    gX + gPadLeft + plotW,
-    gY + gHeight - 2,
-    { align: 'right' }
-  );
+  setColor('text', [56, 189, 248]);
+  doc.text(`${inputs.ambientTempC} °C ambient temperature`, gX + gPadLeft + plotW, gY + gHeight - 2, { align: 'right' });
 
-  y2 += gHeight + 6;
+  y2 += gHeight + 9;
 
-  // ==========================================
-  // STATIONARY HEAT TRANSITION MATERIAL TABLE
-  // ==========================================
+  // --- Material / heat transition table ---
+  y2 = sectionTitle(tr('Tabel Transisi Panas Multilapis (ASTM C680)', 'Multilayer Heat Transition Table (ASTM C680)'), y2);
+
+  const tCol = {
+    row: margin + 4,
+    mat: margin + 26,
+    thick: margin + 92,
+    temp: margin + 116,
+    k: margin + 144,
+    r: margin + 165,
+  };
+
+  setColor('fill', DARK_BG);
+  doc.rect(margin, y2, contentW, 6.5, 'F');
+  setColor('text', [255, 255, 255]);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(15, 23, 42);
-  doc.text('TABEL HASIL PERHITUNGAN TRANSISI PANAS MULTILAPIS (ASTM C 680)', margin, y2);
-  y2 += 4;
+  doc.setFontSize(6.8);
+  doc.text(tr('Row / Posisi', 'Row / Position'), tCol.row, y2 + 4.4);
+  doc.text(tr('Material / Lapisan', 'Material / Layer'), tCol.mat, y2 + 4.4);
+  doc.text(tr('Tebal [mm]', 'Thickness [mm]'), tCol.thick, y2 + 4.4);
+  doc.text(tr('Suhu [°C]', 'Temp [°C]'), tCol.temp, y2 + 4.4);
+  doc.text('k [W/m·K]', tCol.k, y2 + 4.4);
+  doc.text('R [m²·K/W]', tCol.r, y2 + 4.4);
+  y2 += 6.5;
 
-  // Table header
-  doc.setFillColor(30, 41, 59);
-  doc.rect(margin, y2, pageWidth - 2 * margin, 5.5, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(6.5);
-  doc.setFont('helvetica', 'bold');
+  const t2RowH = 5.8;
 
-  doc.text('Row/Posisi', margin + 3, y2 + 3.8);
-  doc.text('Material / Lapisan', margin + 25, y2 + 3.8);
-  doc.text('Tebal [mm]', margin + 90, y2 + 3.8);
-  doc.text('Suhu [°C]', margin + 115, y2 + 3.8);
-  doc.text('k [W/m·K]', margin + 145, y2 + 3.8);
-  doc.text('R [m²·K/W]', margin + 165, y2 + 3.8);
-
-  y2 += 5.5;
-
-  // Row for internal wall temp
-  doc.setFillColor(241, 245, 249);
-  doc.rect(margin, y2, pageWidth - 2 * margin, 4.5, 'F');
+  setColor('fill', PANEL);
+  doc.rect(margin, y2, contentW, t2RowH, 'F');
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  doc.setTextColor(71, 85, 105);
-  doc.text('Internal Wall Temp.', margin + 3, y2 + 3.2);
-  doc.text(`Gas film boundary layer (h_in: ${results.internalConvectionHi} W/m²·K)`, margin + 25, y2 + 3.2);
-  doc.text('-', margin + 90, y2 + 3.2);
+  doc.setFontSize(7);
+  setColor('text', SUBTLE);
+  doc.text('Internal Wall', tCol.row, y2 + 4);
+  doc.text(`Gas film boundary (h_in: ${results.internalConvectionHi} W/m²·K)`, tCol.mat, y2 + 4);
+  doc.text('—', tCol.thick, y2 + 4);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(220, 38, 38);
-  doc.text(`${Math.round(results.innerWallTempC)}`, margin + 115, y2 + 3.2);
+  setColor('text', BRAND);
+  doc.text(`${Math.round(results.innerWallTempC)}`, tCol.temp, y2 + 4);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(71, 85, 105);
-  doc.text('-', margin + 145, y2 + 3.2);
-  doc.text(`${(1 / Math.max(1, results.internalConvectionHi)).toFixed(4)}`, margin + 165, y2 + 3.2);
-  y2 += 4.5;
+  setColor('text', SUBTLE);
+  doc.text('—', tCol.k, y2 + 4);
+  doc.text(`${(1 / Math.max(1, results.internalConvectionHi)).toFixed(4)}`, tCol.r, y2 + 4);
+  y2 += t2RowH;
 
-  // Rows for each layer
   results.layerResults.forEach((lyr, idx) => {
     if (idx % 2 === 0) {
-      doc.setFillColor(248, 250, 252);
-      doc.rect(margin, y2, pageWidth - 2 * margin, 5, 'F');
+      setColor('fill', PANEL);
+      doc.rect(margin, y2, contentW, t2RowH, 'F');
     }
-    doc.setTextColor(15, 23, 42);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
-
     const posStr =
-      lyr.position === 'inside'
-        ? 'Refractory'
-        : lyr.position === 'duct_wall'
-        ? 'Shell Plat'
-        : 'Isolasi Luar';
+      lyr.position === 'inside' ? tr('Refraktori', 'Refractory') : lyr.position === 'duct_wall' ? tr('Shell Plat', 'Shell Plate') : tr('Isolasi Luar', 'Outer Insulation');
 
-    doc.text(posStr, margin + 3, y2 + 3.5);
-    doc.setFont('helvetica', 'bold');
-    doc.text(lyr.name.length > 32 ? lyr.name.slice(0, 30) + '...' : lyr.name, margin + 25, y2 + 3.5);
-    doc.text(`${lyr.thicknessMm.toFixed(0)}`, margin + 90, y2 + 3.5);
     doc.setFont('helvetica', 'normal');
-    doc.text(`${Math.round(lyr.tOuterC)}`, margin + 115, y2 + 3.5);
+    doc.setFontSize(7);
+    setColor('text', SUBTLE);
+    doc.text(posStr, tCol.row, y2 + 4);
+    doc.setFont('helvetica', 'bold');
+    setColor('text', INK);
+    doc.text(lyr.name.length > 34 ? lyr.name.slice(0, 32) + '…' : lyr.name, tCol.mat, y2 + 4);
+    doc.setFont('helvetica', 'normal');
+    setColor('text', SUBTLE);
+    doc.text(lyr.thicknessMm.toFixed(0), tCol.thick, y2 + 4);
+    doc.text(`${Math.round(lyr.tOuterC)}`, tCol.temp, y2 + 4);
 
-    // Thermal conductivity derived from thickness & R
     const kVal =
       lyr.thicknessMm > 0 && lyr.rValue > 0
         ? (lyr.thicknessMm / 1000 / (lyr.rValue * Math.max(0.1, results.surfaceAreaM2))).toFixed(3)
-        : '-';
-    doc.text(`${kVal}`, margin + 145, y2 + 3.5);
-    doc.text(`${lyr.rValue.toFixed(4)}`, margin + 165, y2 + 3.5);
+        : '—';
+    doc.text(kVal, tCol.k, y2 + 4);
+    doc.text(lyr.rValue.toFixed(4), tCol.r, y2 + 4);
 
-    y2 += 5;
+    y2 += t2RowH;
   });
 
-  // External wall temp row
-  doc.setFillColor(241, 245, 249);
-  doc.rect(margin, y2, pageWidth - 2 * margin, 5, 'F');
+  setColor('fill', PANEL);
+  doc.rect(margin, y2, contentW, t2RowH, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6.5);
-  doc.setTextColor(30, 41, 59);
-  doc.text('External Wall Temp.', margin + 3, y2 + 3.5);
-  doc.text('Suhu permukaan luar shell/jacket', margin + 25, y2 + 3.5);
-  doc.text(`${totalThick.toFixed(0)} total`, margin + 90, y2 + 3.5);
-  doc.setTextColor(234, 88, 12);
-  doc.text(`${Math.round(results.outerSurfaceTempC)}`, margin + 115, y2 + 3.5);
-  doc.setTextColor(71, 85, 105);
-  doc.setFont('helvetica', 'normal');
-  doc.text(
-    `Heat Loss: ${Math.round(results.heatFluxWm2)} W/m²`,
-    margin + 145,
-    y2 + 3.5
-  );
-  y2 += 7;
-
-  // Theoretical Disclaimer Footer Page 2 (persis seperti laporan vendor)
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.rect(margin, y2, pageWidth - 2 * margin, 13, 'FD');
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
-  doc.setTextColor(100, 116, 139);
-  doc.text(
-    'Heat transition calculations are theoretical and calculated depending on known parameters as thermal cond, heat transfer coef.,',
-    margin + 3,
-    y2 + 4.5
-  );
-  doc.text(
-    'wall thickness, etc. Heat-bridges as anchors, openings, mortar-joints are not regarded. All data are calculated according to ASTM C 680-89.',
-    margin + 3,
-    y2 + 8.5
-  );
-
   doc.setFontSize(7);
-  doc.setTextColor(148, 163, 184);
-  doc.text('ThermoDuct Stationary Heat Transition System | Standar ASTM C 680 / VDI Wärmeatlas', margin, pageHeight - 6);
-  doc.text('Hal 2 / 2', pageWidth - margin - 15, pageHeight - 6);
+  setColor('text', INK);
+  doc.text('External Wall', tCol.row, y2 + 4);
+  doc.setFont('helvetica', 'normal');
+  setColor('text', SUBTLE);
+  doc.text(tr('Suhu permukaan luar shell / jacket', 'Outer shell / jacket surface temperature'), tCol.mat, y2 + 4);
+  doc.text(`${totalThick.toFixed(0)} total`, tCol.thick, y2 + 4);
+  doc.setFont('helvetica', 'bold');
+  setColor('text', [234, 88, 12]);
+  doc.text(`${Math.round(results.outerSurfaceTempC)}`, tCol.temp, y2 + 4);
+  doc.setFont('helvetica', 'normal');
+  setColor('text', SUBTLE);
+  doc.text(`${Math.round(results.heatFluxWm2)} W/m²`, tCol.k, y2 + 4);
+  y2 += t2RowH + 8;
+
+  // --- Disclaimer ---
+  const discLines = doc.splitTextToSize(
+    tr(
+      'Perhitungan transisi panas bersifat teoritis berdasarkan parameter yang diketahui (konduktivitas termal, koefisien pindah panas, ketebalan dinding, dll). Jembatan panas seperti anchor, bukaan, dan sambungan mortar tidak diperhitungkan. Seluruh data dihitung sesuai ASTM C680-89.',
+      'Heat transition calculations are theoretical, based on known parameters (thermal conductivity, heat transfer coefficients, wall thickness, etc). Heat bridges such as anchors, openings, and mortar joints are not accounted for. All data is calculated per ASTM C680-89.'
+    ),
+    contentW - 10
+  );
+  const discBoxH = discLines.length * 4.6 + 6;
+  setColor('fill', PANEL);
+  setColor('draw', LINE);
+  doc.roundedRect(margin, y2, contentW, discBoxH, 2, 2, 'FD');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.8);
+  setColor('text', SUBTLE);
+  discLines.forEach((line: string, idx: number) => doc.text(line, margin + 5, y2 + 5 + idx * 4.6));
+
+  y2 += discBoxH + 10;
+
+  // --- Sign-off: prepared-by + a real signature line, plus a certification stamp for
+  // official/paid reports. Lives at the end of the document (page 2 has the room; page 1 is full).
+  const signH = 32;
+  const signColW = contentW * (isCertified ? 0.66 : 1);
+  const reportNo = metadata?.reportNumber || `TD-${Date.now().toString().slice(-6)}`;
+
+  setColor('fill', PANEL);
+  setColor('draw', LINE);
+  doc.setLineWidth(0.25);
+  doc.roundedRect(margin, y2, contentW, signH, 2, 2, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  setColor('text', INK);
+  doc.text(tr('Disusun oleh', 'Prepared by'), margin + 5, y2 + 6);
+  doc.setFont('helvetica', 'normal');
+  setColor('text', SUBTLE);
+  doc.text(metadata?.engineerName || 'Certified Thermal Engineer', margin + 5, y2 + 11.5);
+  doc.setFontSize(7);
+  doc.text(`${tr('Nomor Laporan', 'Report Number')}: ${reportNo}`, margin + 5, y2 + 16.5);
+
+  // Physical signature line for the auditor to sign after printing
+  setColor('draw', SUBTLE);
+  doc.setLineWidth(0.25);
+  doc.line(margin + 5, y2 + signH - 7, margin + signColW - 8, y2 + signH - 7);
+  doc.setFontSize(6.5);
+  setColor('text', FAINT);
+  doc.text(tr('Tanda Tangan & Tanggal Pengesahan Auditor', "Auditor's Signature & Sign-off Date"), margin + 5, y2 + signH - 3);
+
+  if (isCertified) {
+    const stampCX = margin + contentW - 22;
+    const stampCY = y2 + signH / 2;
+    const stampR = 13;
+
+    setColor('draw', BRAND);
+    doc.setLineWidth(0.9);
+    doc.circle(stampCX, stampCY, stampR, 'S');
+    doc.setLineWidth(0.4);
+    doc.circle(stampCX, stampCY, stampR - 1.8, 'S');
+
+    setColor('text', BRAND);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.2);
+    doc.text('THERMODUCT', stampCX, stampCY - 2, { align: 'center', angle: -8 });
+    doc.setFontSize(5.4);
+    doc.text('CERTIFIED', stampCX, stampCY + 2.6, { align: 'center', angle: -8 });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(4.2);
+    setColor('text', SUBTLE);
+    doc.text(reportNo, stampCX, stampCY + 6.5, { align: 'center', angle: -8 });
+  }
+
+  footer(tr('Halaman 2 / 2', 'Page 2 / 2'));
 
   // Save PDF
   const filename = isCertified
