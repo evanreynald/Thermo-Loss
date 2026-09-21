@@ -35,6 +35,7 @@ import { PayPerReportModal } from "./components/PayPerReportModal";
 import { Language, UnitSystem, translations } from "./utils/translations";
 import { unitHelpers } from "./utils/unitConversion";
 import {
+  Flame,
   Wind,
   Layers,
   Sparkles,
@@ -393,16 +394,12 @@ export default function App() {
       {/* Top Navbar */}
       <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-40 px-4 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-16 h-10 rounded-xl bg-white flex items-center justify-center shadow-lg shadow-black/20 shrink-0 p-1.5">
-            <img
-              src="/sig-logo.png"
-              alt="SIG"
-              className="w-full h-full object-contain"
-            />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-lg shadow-amber-500/20 shrink-0">
+            <Flame className="w-6 h-6" />
           </div>
           <div>
             <h1 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
-              SIG ThermoDuct
+              ThermoDuct
               <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-brand-500/10 text-brand-400 border border-brand-500/30">
                 Thermal & Mechanical Engineering
               </span>
