@@ -659,7 +659,7 @@ export const ResultsDashboard: React.FC<Props> = ({
               </strong>
             </div>
             <span className="text-[11px] text-slate-400">
-              Model h_in: <strong className="text-cyan-400 font-mono">{results.internalConvectionHi} W/m²·K</strong> ({results.internalTransferModelUsed})
+              Model h_in: <strong className="text-brand-400 font-mono">{results.internalConvectionHi} W/m²·K</strong> ({results.internalTransferModelUsed})
             </span>
           </div>
         )}

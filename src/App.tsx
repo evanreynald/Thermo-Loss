@@ -897,7 +897,15 @@ export default function App() {
                   }
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200"
                 >
-                  <option value="auto">Auto ({results.flowType})</option>
+                  <option value="auto">
+                    Auto (
+                    {tr(
+                      results.flowType,
+                      { Turbulen: "Turbulent", Laminar: "Laminar", Transisi: "Transitional" }[results.flowType] ??
+                        results.flowType,
+                    )}
+                    )
+                  </option>
                   <option value="turbulent">
                     {tr(
                       "Turbulen (Dittus-Boelter)",
@@ -913,9 +921,9 @@ export default function App() {
             <div className="pt-2 border-t border-slate-800 space-y-2 text-xs">
               <div className="flex items-center justify-between">
                 <label className="text-slate-400 font-medium flex items-center gap-1.5">
-                  <span>Model Pindah Panas Gas Dalam (h_in)</span>
+                  <span>{tr("Model Pindah Panas Gas Dalam (h_in)", "Internal Gas Heat Transfer Model (h_in)")}</span>
                 </label>
-                <span className="text-[11px] text-cyan-400 font-mono font-semibold">
+                <span className="text-[11px] text-brand-400 font-mono font-semibold">
                   h_in: {results.internalConvectionHi} W/m²·K
                 </span>
               </div>
@@ -932,18 +940,29 @@ export default function App() {
                           : inputs.customInternalHi,
                     })
                   }
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-brand-500"
                 >
                   <option value="auto">
-                    Auto (VDI-Wärmeatlas & Radiasi jika ≥500°C)
+                    {tr(
+                      "Auto (VDI-Wärmeatlas & Radiasi jika ≥500°C)",
+                      "Auto (VDI-Wärmeatlas & Radiation if ≥500°C)",
+                    )}
                   </option>
                   <option value="vdi_warmeatlas">
                     VDI-Wärmeatlas (1974) Kc1 (149.6 W/m²·K @ 1200°C)
                   </option>
                   <option value="convection_only">
-                    Konveksi Pipa Standar (Dittus-Boelter)
+                    {tr(
+                      "Konveksi Pipa Standar (Dittus-Boelter)",
+                      "Standard Pipe Convection (Dittus-Boelter)",
+                    )}
                   </option>
-                  <option value="manual">Input Manual Nilai h_in (W/m²·K)</option>
+                  <option value="manual">
+                    {tr(
+                      "Input Manual Nilai h_in (W/m²·K)",
+                      "Manual h_in Value Input (W/m²·K)",
+                    )}
+                  </option>
                 </select>
 
                 {inputs.internalHeatTransferModel === 'manual' ? (
@@ -960,15 +979,21 @@ export default function App() {
                         })
                       }
                       placeholder="h_in (W/m²·K)"
-                      className="w-full bg-slate-950 border border-cyan-500/80 rounded-lg px-2.5 py-1.5 text-cyan-300 font-mono font-bold"
+                      className="w-full bg-slate-950 border border-brand-500/80 rounded-lg px-2.5 py-1.5 text-brand-300 font-mono font-bold"
                     />
                   </div>
                 ) : (
                   <div className="text-[11px] text-slate-400 flex items-center bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-800">
                     <span className="truncate">
                       {inputs.internalHeatTransferModel === 'convection_only'
-                        ? 'Konveksi pipa (fluida suhu rendah/sedang)'
-                        : 'Standar Tungku/Kiln (Radiasi Gas CO₂/H₂O + Turbulen)'}
+                        ? tr(
+                            'Konveksi pipa (fluida suhu rendah/sedang)',
+                            'Pipe convection (low/medium temperature fluid)',
+                          )
+                        : tr(
+                            'Standar Tungku/Kiln (Radiasi Gas CO₂/H₂O + Turbulen)',
+                            'Furnace/Kiln standard (CO₂/H₂O gas radiation + turbulent)',
+                          )}
                     </span>
                   </div>
                 )}
