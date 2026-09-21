@@ -98,7 +98,7 @@ export function exportCalculationToPDF(
   let y = margin;
 
   // --- Header banner ---
-  const headerH = 24;
+  const headerH = 28;
   setColor('fill', DARK_BG);
   doc.rect(0, 0, pageWidth, headerH, 'F');
 
@@ -117,8 +117,25 @@ export function exportCalculationToPDF(
   const dateStr = metadata?.dateStr || new Date().toLocaleString(lang === 'id' ? 'id-ID' : 'en-US');
   doc.text(`${modeStr}  ·  ${tr('Diterbitkan', 'Published')} ${dateStr}`, margin, 17);
 
-  const projLine = `${metadata?.projectName || 'Industrial Ducting Project'}  ·  ${tr('Klien', 'Client')}: ${metadata?.clientName || 'General Industrial Plant'}`;
-  doc.text(projLine.length > 90 ? projLine.slice(0, 88) + '…' : projLine, margin, 21.5);
+  // Project and client each get their own line so long names aren't cut off; only truncate
+  // (with an ellipsis) if a name is wider than the space left of the status chip.
+  const fitText = (text: string, maxW: number) => {
+    if (doc.getTextWidth(text) <= maxW) return text;
+    let t = text;
+    while (t.length > 1 && doc.getTextWidth(t + '…') > maxW) t = t.slice(0, -1);
+    return t + '…';
+  };
+  const headerTextMaxW = contentW - 40;
+  doc.text(
+    fitText(`${tr('Proyek', 'Project')}: ${metadata?.projectName || 'Industrial Ducting Project'}`, headerTextMaxW),
+    margin,
+    21.5
+  );
+  doc.text(
+    fitText(`${tr('Klien', 'Client')}: ${metadata?.clientName || 'General Industrial Plant'}`, headerTextMaxW),
+    margin,
+    25.5
+  );
 
   // Simple status chip, top-right — no gimmicks, just a clean label
   const chipLabel = isCertified ? tr('LAPORAN RESMI', 'OFFICIAL REPORT') : 'DRAFT SAMPLE';
@@ -159,7 +176,7 @@ export function exportCalculationToPDF(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.8);
     setColor('text', SUBTLE);
-    doc.text(sub, x + 4, y + 19);
+    doc.text(fitText(sub, cardW - 8), x + 4, y + 19);
   };
 
   const c1X = margin;
@@ -187,9 +204,11 @@ export function exportCalculationToPDF(
   const card3Sub =
     inputs.hasInsulation === false
       ? `${tr('Rek. pasang', 'Recommended')}: ${results.recommendedInsulationThicknessMm} mm`
+      : inputs.mode !== 'design'
+      ? `${tr('Tebal shell min', 'Min. shell thickness')}: ${results.recommendedDuctThicknessMm} mm`
       : results.recommendedInsulationAdditionalMm && results.recommendedInsulationAdditionalMm > 0
       ? `${tr('Perlu', 'Needs')} +${results.recommendedInsulationAdditionalMm} mm ${tr('pd', 'on')} ${results.recommendedInsulationTargetLayerName?.slice(0, 15) ?? ''}`
-      : tr('Tebal Sesuai Target Safe Touch', 'Thickness Meets Safe-Touch Target');
+      : tr('Tebal Sesuai Target Safe Touch', 'Meets Safe-Touch Target');
   drawCard(c3X, card3Label, card3Value, card3Sub, inputs.hasInsulation === false ? WARN : INK);
 
   drawCard(
@@ -205,7 +224,7 @@ export function exportCalculationToPDF(
   if (canvasElement) {
     try {
       const imgData = canvasElement.toDataURL('image/png');
-      const imgH = 62;
+      const imgH = 58;
       setColor('draw', LINE);
       doc.setLineWidth(0.25);
       doc.roundedRect(margin, y, contentW, imgH, 2, 2, 'S');
