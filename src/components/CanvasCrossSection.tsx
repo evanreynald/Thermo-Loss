@@ -91,7 +91,6 @@ export const CanvasCrossSection: React.FC<Props> = ({
 
   const drawCrossSection = (ctx: CanvasRenderingContext2D, width: number, height: number, rotationAngle: number = 0) => {
     const centerX = width / 2;
-    const centerY = height / 2 + 10;
     const isCylinder = inputs.shape === 'cylindrical' || inputs.shape === 'kiln';
     const isRotatingKiln = inputs.shape === 'kiln';
 
@@ -114,7 +113,31 @@ export const CanvasCrossSection: React.FC<Props> = ({
     const maxRadiusMm = totalMaxDimensionMm / 2;
 
     const maxCanvasRadius = Math.min(width, height) * 0.38;
-    const scale = maxCanvasRadius / Math.max(50, maxRadiusMm);
+    const baseScale = maxCanvasRadius / Math.max(50, maxRadiusMm);
+
+    // Half-extents of the drawn shape (mm). Rectangles are wider than tall (or vice versa),
+    // circles are equal on both axes.
+    const totalWallMm = 2 * (totalInsideIns + inputs.ductThicknessMm + totalOutsideIns);
+    const halfWmm = isCylinder ? maxRadiusMm : (inputs.widthMm + totalWallMm) / 2;
+    const halfHmm = isCylinder ? maxRadiusMm : (inputs.heightMm + totalWallMm) / 2;
+
+    // The two callout boxes are pinned to the top corners. If the shape is wide enough to
+    // reach under them, shrink it and push it down so it clears the boxes instead of being cut.
+    const leftBoxRightPx = 10 + 220 + 8;
+    const rightBoxLeftPx = width - 160;
+    const reserveTopPx = 10 + Math.max(95, 25 + results.layerResults.length * 18) + 8;
+    const defaultCenterY = height / 2 + 10;
+    const reachesUnderBoxes =
+      centerX - halfWmm * baseScale < leftBoxRightPx || centerX + halfWmm * baseScale > rightBoxLeftPx;
+    const overlapsVertically = defaultCenterY - halfHmm * baseScale < reserveTopPx;
+
+    let scale = baseScale;
+    let centerY = defaultCenterY;
+    if (reachesUnderBoxes && overlapsVertically) {
+      const availH = Math.max(60, height - reserveTopPx - 12);
+      scale = Math.min(baseScale, availH / 2 / Math.max(1, halfHmm));
+      centerY = reserveTopPx + availH / 2;
+    }
 
     // Background technical grid
     ctx.fillStyle = '#0f172a'; // slate-900
