@@ -1,0 +1,8 @@
+{
+  "name": "ThermoDuct - Thermal Insulation & Ducting Analyzer",
+  "description": "Aplikasi rekayasa untuk mendesain, mendiagnosa, dan menganalisa isolasi termal serta ketebalan ducting/kiln/pipa dengan visualisasi kanvas 2D, analisa finansial, dan ekspor laporan PDF.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

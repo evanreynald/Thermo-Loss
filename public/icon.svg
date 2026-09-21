@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="duct" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="insul" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+    <linearGradient id="core" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444" />
+      <stop offset="50%" stop-color="#f97316" />
+      <stop offset="100%" stop-color="#fbbf24" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="108" fill="url(#bg)" />
+
+  <!-- Outer Insulation Ring -->
+  <circle cx="256" cy="256" r="185" fill="none" stroke="url(#insul)" stroke-width="32" stroke-dasharray="8 6" opacity="0.9" />
+
+  <!-- Steel Ducting Shell Ring -->
+  <circle cx="256" cy="256" r="142" fill="none" stroke="url(#duct)" stroke-width="26" />
+
+  <!-- Inner Fluid / Thermal Core -->
+  <circle cx="256" cy="256" r="110" fill="#0f172a" stroke="#ef4444" stroke-width="6" />
+
+  <!-- Thermal Flame & Thermometer Graphic -->
+  <path d="M256 160 C220 215 200 245 200 280 C200 315 225 340 256 340 C287 340 312 315 312 280 C312 245 292 215 256 160 Z" fill="url(#core)" />
+  <path d="M256 220 C240 250 230 268 230 288 C230 305 242 320 256 320 C270 320 282 305 282 288 C282 268 272 250 256 220 Z" fill="#ffffff" opacity="0.85" />
+</svg>
