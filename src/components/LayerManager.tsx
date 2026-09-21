@@ -652,7 +652,7 @@ export const LayerManager: React.FC<Props> = ({
                   ) : (
                     <div className="text-[11px] text-slate-400 flex items-center justify-between px-1">
                       <span>
-                        Nilai Termal: k ={" "}
+                        {tr("Nilai Termal: k =", "Thermal Value: k =")}{" "}
                         <strong className="text-slate-300 font-mono">
                           {currentConductivity} W/m·K
                         </strong>{" "}
@@ -672,7 +672,7 @@ export const LayerManager: React.FC<Props> = ({
                         }
                         className="text-amber-400 hover:underline text-[10px]"
                       >
-                        Ubah nilai k lapisan ini
+                        {tr("Ubah nilai k lapisan ini", "Edit this layer's k value")}
                       </button>
                     </div>
                   )}
@@ -689,30 +689,30 @@ export const LayerManager: React.FC<Props> = ({
                 onClick={() => handleAddLayer("outside")}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 transition-colors"
               >
-                <Plus className="w-3.5 h-3.5 text-brand-400" />+ Tambah Lapis
-                Isolasi Luar
+                <Plus className="w-3.5 h-3.5 text-brand-400" />+{" "}
+                {tr("Tambah Lapis Isolasi Luar", "Add Outer Insulation Layer")}
               </button>
               <button
                 type="button"
                 onClick={() => handleAddLayer("inside")}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 transition-colors"
               >
-                <Plus className="w-3.5 h-3.5 text-amber-400" />+ Tambah
-                Refraktori Dalam (Kiln / Lining)
+                <Plus className="w-3.5 h-3.5 text-amber-400" />+{" "}
+                {tr("Tambah Refraktori Dalam (Kiln / Lining)", "Add Inner Refractory (Kiln / Lining)")}
               </button>
             </div>
           ) : (
             <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
               <span className="flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                Mode single-layer aktif.
+                {tr("Mode single-layer aktif.", "Single-layer mode active.")}
               </span>
               <button
                 type="button"
                 onClick={() => handleConfigChange("multi_out")}
                 className="text-brand-400 hover:underline text-[11px] font-medium"
               >
-                + Ubah ke Multi-Layer
+                + {tr("Ubah ke Multi-Layer", "Switch to Multi-Layer")}
               </button>
             </div>
           )}

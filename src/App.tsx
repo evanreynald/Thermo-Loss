@@ -550,23 +550,23 @@ export default function App() {
                 : "-- Choose Engineering Template --"}
             </option>
             <option value="cooler_cement">
-              🏭 Cooler Kiln (Model Vendor 1200°C / 3 Lapis Refraktori)
+              🏭 {tr("Cooler Kiln (Model Vendor 1200°C / 3 Lapis Refraktori)", "Cooler Kiln (Vendor Model 1200°C / 3 Refractory Layers)")}
             </option>
             <option value="steam_pipe">
-              ♨️ Pipa Uap Panas / Steam Pipe (280°C)
+              ♨️ {tr("Pipa Uap Panas / Steam Pipe (280°C)", "Steam Pipe (280°C)")}
             </option>
             <option value="rotary_kiln">🔥 Rotary Kiln (1150°C)</option>
             <option value="flue_gas_duct">
-              💨 Ducting Flue Gas Persegi / Rectangular Flue Gas Ducting (340°C)
+              💨 {tr("Ducting Flue Gas Persegi (340°C)", "Rectangular Flue Gas Ducting (340°C)")}
             </option>
             <option value="bare_pipe">
-              ⚠️ Pipa Telanjang / Bare Pipe (220°C)
+              ⚠️ {tr("Pipa Telanjang / Bare Pipe (220°C)", "Bare Pipe (220°C)")}
             </option>
           </select>
         </div>
 
         <div className="text-[11px] text-slate-500">
-          Standar: <strong className="text-slate-400">ASTM C1055</strong> (Touch
+          {tr("Standar", "Standards")}: <strong className="text-slate-400">ASTM C1055</strong> (Touch
           Safety), <strong className="text-slate-400">ASME B31.3</strong>,{" "}
           <strong className="text-slate-400">SMACNA</strong>
         </div>
