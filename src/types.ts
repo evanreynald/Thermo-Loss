@@ -83,6 +83,10 @@ export interface CalculationInputs {
   isMultiLayer: boolean;
   layers: InsulationLayer[];
 
+  // Internal heat transfer model (ASTM C680 / VDI-Wärmeatlas)
+  internalHeatTransferModel?: 'auto' | 'vdi_warmeatlas' | 'convection_only' | 'manual';
+  customInternalHi?: number; // Manual override for h_in (W/m²·K)
+
   // Financial settings
   fuelType: 'natural_gas' | 'coal' | 'hsd_diesel' | 'biomass' | 'electricity';
   fuelCostPerUnit: number; // IDR per unit (e.g. IDR per MMBtu, IDR/kg, IDR/kWh)
@@ -114,6 +118,8 @@ export interface CalculationResults {
   // Temperatures
   innerWallTempC: number;
   outerSurfaceTempC: number;
+  refractoryOuterTempC?: number; // Suhu terluar refraktori (sebelum menyentuh plat shell)
+  internalTransferModelUsed?: string;
   layerResults: LayerResult[];
 
   // Flow & Convection
@@ -125,6 +131,11 @@ export interface CalculationResults {
 
   // Recommended thicknesses
   recommendedInsulationThicknessMm: number;
+  recommendedInsulationTargetLayerId?: string;
+  recommendedInsulationTargetLayerName?: string;
+  recommendedInsulationTargetLayerPos?: InsulationPosition;
+  recommendedInsulationCurrentThicknessMm?: number;
+  recommendedInsulationAdditionalMm?: number;
   recommendedDuctThicknessMm: number; // ASME / SMACNA based
   ductSafetyFactor: number;
 

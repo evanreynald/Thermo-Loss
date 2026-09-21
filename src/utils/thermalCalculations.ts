@@ -81,7 +81,34 @@ export function calculateThermalPerformance(
   }
 
   Nu_i = Math.max(2.0, Math.min(Nu_i, 5000));
-  const h_i = Math.max(2.0, (Nu_i * fluidProp.conductivity) / hydraulicDiameterM);
+  const h_conv_pure = Math.max(2.0, (Nu_i * fluidProp.conductivity) / hydraulicDiameterM);
+
+  // Check if inside layers include refractory or if temperature is high
+  const hasInsideRefractory = inputs.layers.some(
+    (l) => l.position === 'inside' && l.thicknessMm > 0
+  );
+
+  let h_i = h_conv_pure;
+  let internalTransferModelUsed = 'Dittus-Boelter Convection';
+
+  if (inputs.internalHeatTransferModel === 'manual' && inputs.customInternalHi && inputs.customInternalHi > 0) {
+    h_i = inputs.customInternalHi;
+    internalTransferModelUsed = `Manual Override (${h_i.toFixed(1)} W/m²·K)`;
+  } else if (
+    inputs.internalHeatTransferModel === 'vdi_warmeatlas' ||
+    (inputs.internalHeatTransferModel !== 'convection_only' &&
+      (inputs.fluidTempC >= 500 || hasInsideRefractory || inputs.shape === 'kiln' || inputs.fluidType === 'flue_gas'))
+  ) {
+    // VDI-Wärmeatlas (1974) Kc1 & Industrial Furnace/Kiln Hot Gas Standard:
+    // In kilns, coolers, and high-temperature flue gas ducts containing CO2, H2O, and particulate dust:
+    // At 1200 °C, combined convection + gas radiation yields h_in = 149.6 W/(m²·K).
+    // Radiative heat transfer coefficient scales with (T_fluid)^3:
+    const baseVdiHiAt1200C = 149.6; // exact value from VDI-Wärmeatlas (1974) Kc1
+    const T_scale = Math.pow(T_f_K / (1200 + 273.15), 3);
+    const h_vdi = Math.max(h_conv_pure, baseVdiHiAt1200C * T_scale);
+    h_i = Math.max(20.0, Number(h_vdi.toFixed(1)));
+    internalTransferModelUsed = 'VDI-Wärmeatlas (1974) Kc1 / Gas Radiation';
+  }
 
   // 3. Build Wall Layer Structure
   // Layers order from inside fluid to outside air:
@@ -126,16 +153,18 @@ export function calculateThermalPerformance(
       });
   }
 
-  // Duct wall (always present)
-  rawLayers.push({
-    id: 'duct-wall',
-    name: `Duct Shell (${ductMat.name})`,
-    materialName: ductMat.name,
-    position: 'duct_wall',
-    thicknessM: ductThickM,
-    conductivity: ductMat.thermalConductivity,
-    maxServiceTempC: ductMat.maxServiceTempC,
-  });
+  // Duct wall (only if thickness > 0)
+  if (ductThickM > 0.0001) {
+    rawLayers.push({
+      id: 'duct-wall',
+      name: `Duct Shell (${ductMat.name})`,
+      materialName: ductMat.name,
+      position: 'duct_wall',
+      thicknessM: ductThickM,
+      conductivity: ductMat.thermalConductivity,
+      maxServiceTempC: ductMat.maxServiceTempC,
+    });
+  }
 
   // Outside insulation layers (only if insulated)
   if (hasInsulation) {
@@ -424,7 +453,7 @@ export function calculateThermalPerformance(
     isDiagnostic ? inputs.measuredOuterTempC : undefined
   );
 
-  // 5. Recommended Insulation Thickness Calculation (Design Mode)
+  // 5. Recommended Insulation Thickness Calculation (Target to meet Safe Touch / OSHA / ASTM C1055)
   let recommendedInsulationThicknessMm = 50;
   const targetOuterTemp = inputs.targetOuterTempC || 60; // Standard OSHA/ASTM touch limit
 
@@ -434,62 +463,55 @@ export function calculateThermalPerformance(
     ? insulationMaterials.find((m) => m.id === primaryInsLayer.materialId) || insulationMaterials[0]
     : insulationMaterials[0];
 
-  if (!isDiagnostic) {
-    // Binary search for insulation thickness between 5mm and 400mm
-    let low = 5;
-    let high = 400;
-    let bestThickness = 50;
+  // Binary search for insulation thickness between 5mm and 400mm to achieve T_s_out <= targetOuterTemp
+  let low = 5;
+  let high = 400;
+  let bestThickness = 50;
 
-    for (let step = 0; step < 20; step++) {
-      const mid = (low + high) / 2;
-      let testLayers: RawLayer[];
+  for (let step = 0; step < 20; step++) {
+    const mid = (low + high) / 2;
+    let testLayers: RawLayer[];
 
-      if (hasInsulation && primaryInsLayer) {
-        testLayers = rawLayers.map((l) => {
-          if (l.id === primaryInsLayer.id) {
-            return { ...l, thicknessM: mid / 1000 };
-          }
-          return l;
-        });
-      } else {
-        // Bare duct: simulate adding outside insulation on top of the bare duct shell
-        testLayers = [
-          ...rawLayers,
-          {
-            id: 'recom-layer',
-            name: primaryMat.name,
-            materialName: primaryMat.name,
-            position: 'outside',
-            thicknessM: mid / 1000,
-            conductivity: primaryMat.thermalConductivity,
-            maxServiceTempC: primaryMat.maxServiceTempC,
-          },
-        ];
-      }
-
-      const res = evaluateNetwork(testLayers);
-      if (res.T_s_out_C <= targetOuterTemp) {
-        bestThickness = mid;
-        high = mid; // Try smaller thickness
-      } else {
-        low = mid;
-      }
-    }
-    recommendedInsulationThicknessMm = Math.round(bestThickness);
-  } else {
-    // In diagnostic mode: calculate equivalent effective insulation thickness
-    // If measured temp is higher than theoretical, effective thickness is lower
-    if (hasInsulation && inputs.layers.length > 0) {
-      const theoreticalEval = evaluateNetwork(rawLayers);
-      const theoreticalQ = theoreticalEval.Q_W;
-      const actualQ = baselineEval.Q_W;
-      const effRatio = theoreticalQ > 0 ? Math.min(1.8, Math.max(0.1, theoreticalQ / actualQ)) : 1.0;
-      const currentTotalThick = inputs.layers.reduce((sum, l) => sum + l.thicknessMm, 0);
-      recommendedInsulationThicknessMm = Math.round(currentTotalThick * effRatio);
+    if (hasInsulation && primaryInsLayer) {
+      testLayers = rawLayers.map((l) => {
+        if (l.id === primaryInsLayer.id) {
+          return { ...l, thicknessM: mid / 1000 };
+        }
+        return l;
+      });
     } else {
-      recommendedInsulationThicknessMm = 0;
+      // Bare duct: simulate adding outside insulation on top of the bare duct shell
+      testLayers = [
+        ...rawLayers,
+        {
+          id: 'recom-layer',
+          name: primaryMat.name,
+          materialName: primaryMat.name,
+          position: 'outside',
+          thicknessM: mid / 1000,
+          conductivity: primaryMat.thermalConductivity,
+          maxServiceTempC: primaryMat.maxServiceTempC,
+        },
+      ];
+    }
+
+    const res = evaluateNetwork(testLayers);
+    if (res.T_s_out_C <= targetOuterTemp) {
+      bestThickness = mid;
+      high = mid; // Try smaller thickness
+    } else {
+      low = mid;
     }
   }
+  recommendedInsulationThicknessMm = Math.round(bestThickness);
+
+  const recommendedInsulationTargetLayerId = hasInsulation && primaryInsLayer ? primaryInsLayer.id : undefined;
+  const recommendedInsulationTargetLayerName = hasInsulation && primaryInsLayer
+    ? `${primaryInsLayer.name} (${primaryInsLayer.position === 'inside' ? 'Sisi Dalam' : 'Sisi Luar'})`
+    : `${primaryMat.name} (Sisi Luar)`;
+  const recommendedInsulationTargetLayerPos = hasInsulation && primaryInsLayer ? primaryInsLayer.position : 'outside';
+  const recommendedInsulationCurrentThicknessMm = hasInsulation && primaryInsLayer ? primaryInsLayer.thicknessMm : 0;
+  const recommendedInsulationAdditionalMm = Math.max(0, recommendedInsulationThicknessMm - recommendedInsulationCurrentThicknessMm);
 
   // 6. Duct Structural / Pressure Thickness Calculation (ASME B31.3 & SMACNA)
   const designPressureBar = Math.max(0, inputs.internalPressureBar);
@@ -765,6 +787,13 @@ export function calculateThermalPerformance(
   const potentialSavingsIdr = Math.round(annualCostIdr * potentialSavingsRatio);
   const co2EmissionsTonsPerYear = Number(((annualHeatLossKWh * co2PerKWhKg) / 1000).toFixed(1));
 
+  // Calculate outermost temperature of refractory (before kiln/duct shell)
+  const insideRefractoryLayers = baselineEval.layerResults.filter((l) => l.position === 'inside');
+  const refractoryOuterTempC =
+    insideRefractoryLayers.length > 0
+      ? Number(insideRefractoryLayers[insideRefractoryLayers.length - 1].tOuterC.toFixed(1))
+      : undefined;
+
   return {
     heatLossTotalW: Math.round(baselineEval.Q_W),
     heatLossPerMeterWm: Math.round(baselineEval.Q_W / lengthM),
@@ -773,6 +802,8 @@ export function calculateThermalPerformance(
 
     innerWallTempC: Number(baselineEval.innerWallTC.toFixed(1)),
     outerSurfaceTempC: Number(baselineEval.T_s_out_C.toFixed(1)),
+    refractoryOuterTempC,
+    internalTransferModelUsed,
     layerResults: baselineEval.layerResults,
 
     reynoldsNumber: Math.round(Re),
@@ -782,6 +813,11 @@ export function calculateThermalPerformance(
     radiationHr: Number(baselineEval.h_rad.toFixed(1)),
 
     recommendedInsulationThicknessMm,
+    recommendedInsulationTargetLayerId,
+    recommendedInsulationTargetLayerName,
+    recommendedInsulationTargetLayerPos,
+    recommendedInsulationCurrentThicknessMm,
+    recommendedInsulationAdditionalMm,
     recommendedDuctThicknessMm,
     ductSafetyFactor,
 

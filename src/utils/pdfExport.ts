@@ -187,7 +187,9 @@ export function exportCalculationToPDF(
   const card3Sub =
     inputs.hasInsulation === false
       ? `${tr('Rek. pasang', 'Recommended')}: ${results.recommendedInsulationThicknessMm} mm`
-      : `${tr('Tebal shell min', 'Min. shell thickness')}: ${results.recommendedDuctThicknessMm} mm`;
+      : results.recommendedInsulationAdditionalMm && results.recommendedInsulationAdditionalMm > 0
+      ? `${tr('Perlu', 'Needs')} +${results.recommendedInsulationAdditionalMm} mm ${tr('pd', 'on')} ${results.recommendedInsulationTargetLayerName?.slice(0, 15) ?? ''}`
+      : tr('Tebal Sesuai Target Safe Touch', 'Thickness Meets Safe-Touch Target');
   drawCard(c3X, card3Label, card3Value, card3Sub, inputs.hasInsulation === false ? WARN : INK);
 
   drawCard(

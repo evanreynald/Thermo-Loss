@@ -100,6 +100,8 @@ export default function App() {
     // Insulation Configuration
     hasInsulation: true,
     isMultiLayer: false,
+    internalHeatTransferModel: 'auto',
+    customInternalHi: 149.6,
     layers: [
       {
         id: "layer-1",
@@ -159,7 +161,7 @@ export default function App() {
         shape: "rectangular",
         widthMm: 1600,
         heightMm: 1400,
-        ductThicknessMm: 10.0,
+        ductThicknessMm: 0, // 0 mm so total is 320 mm refractory matching PT Benteng Api Technic / Semen Indonesia report
         ductMaterialId: heatSteel.id,
         fluidType: "flue_gas",
         fluidTempC: 1200,
@@ -168,6 +170,8 @@ export default function App() {
         ambientTempC: 32,
         windSpeedMs: 2.0,
         externalEmissivity: 0.9,
+        internalHeatTransferModel: 'vdi_warmeatlas',
+        customInternalHi: 149.6,
         hasInsulation: true,
         isMultiLayer: true,
         layers: [
@@ -188,7 +192,7 @@ export default function App() {
           {
             id: "layer-cooler-3",
             materialId: silca.id,
-            position: "outside",
+            position: "inside", // Inside refractory lining before shell
             thicknessMm: 50,
             name: "50 mm SILCA BOARD 1100",
           },
@@ -352,8 +356,8 @@ export default function App() {
     setIsPayReportModalOpen(true);
   };
 
-  // Apply thickness recommendations directly
-  const handleApplyRecommendedInsulation = (thickMm: number) => {
+  // Apply thickness recommendations directly to the targeted layer
+  const handleApplyRecommendedInsulation = (thickMm: number, targetLayerId?: string) => {
     setInputs((prev) => {
       const defaultMat = insulationMaterials[0];
       if (!prev.hasInsulation || prev.layers.length === 0) {
@@ -371,12 +375,11 @@ export default function App() {
           ],
         };
       }
+      const targetId = targetLayerId || prev.layers.find((l) => l.position === 'outside')?.id || prev.layers[0]?.id;
       return {
         ...prev,
         hasInsulation: true,
-        layers: prev.layers.map((l, idx) =>
-          idx === 0 ? { ...l, thicknessMm: thickMm } : l,
-        ),
+        layers: prev.layers.map((l) => (l.id === targetId ? { ...l, thicknessMm: thickMm } : l)),
       };
     });
   };
@@ -903,6 +906,72 @@ export default function App() {
                   </option>
                   <option value="laminar">Laminar</option>
                 </select>
+              </div>
+            </div>
+
+            {/* Internal Heat Transfer Model (VDI-Wärmeatlas vs Dittus-Boelter Convection) */}
+            <div className="pt-2 border-t border-slate-800 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <label className="text-slate-400 font-medium flex items-center gap-1.5">
+                  <span>Model Pindah Panas Gas Dalam (h_in)</span>
+                </label>
+                <span className="text-[11px] text-cyan-400 font-mono font-semibold">
+                  h_in: {results.internalConvectionHi} W/m²·K
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <select
+                  value={inputs.internalHeatTransferModel || 'auto'}
+                  onChange={(e) =>
+                    setInputs({
+                      ...inputs,
+                      internalHeatTransferModel: e.target.value as any,
+                      customInternalHi:
+                        e.target.value === 'manual'
+                          ? inputs.customInternalHi || 149.6
+                          : inputs.customInternalHi,
+                    })
+                  }
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="auto">
+                    Auto (VDI-Wärmeatlas & Radiasi jika ≥500°C)
+                  </option>
+                  <option value="vdi_warmeatlas">
+                    VDI-Wärmeatlas (1974) Kc1 (149.6 W/m²·K @ 1200°C)
+                  </option>
+                  <option value="convection_only">
+                    Konveksi Pipa Standar (Dittus-Boelter)
+                  </option>
+                  <option value="manual">Input Manual Nilai h_in (W/m²·K)</option>
+                </select>
+
+                {inputs.internalHeatTransferModel === 'manual' ? (
+                  <div>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      value={inputs.customInternalHi ?? 149.6}
+                      onChange={(e) =>
+                        setInputs({
+                          ...inputs,
+                          customInternalHi: parseFloat(e.target.value) || 149.6,
+                        })
+                      }
+                      placeholder="h_in (W/m²·K)"
+                      className="w-full bg-slate-950 border border-cyan-500/80 rounded-lg px-2.5 py-1.5 text-cyan-300 font-mono font-bold"
+                    />
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-slate-400 flex items-center bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                    <span className="truncate">
+                      {inputs.internalHeatTransferModel === 'convection_only'
+                        ? 'Konveksi pipa (fluida suhu rendah/sedang)'
+                        : 'Standar Tungku/Kiln (Radiasi Gas CO₂/H₂O + Turbulen)'}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -45,7 +45,7 @@ interface Props {
   lang?: Language;
   unitSystem?: UnitSystem;
   onExportPDF: () => void;
-  onApplyRecommendedThickness: (thickMm: number) => void;
+  onApplyRecommendedThickness: (thickMm: number, targetLayerId?: string) => void;
   onApplyRecommendedDuctThickness: (thickMm: number) => void;
 }
 
@@ -226,10 +226,13 @@ export const ResultsDashboard: React.FC<Props> = ({
               {results.outerSurfaceTempC > (inputs.targetOuterTempC || 60) && (
                 <button
                   type="button"
-                  onClick={() => onApplyRecommendedThickness(results.recommendedInsulationThicknessMm)}
+                  onClick={() => onApplyRecommendedThickness(results.recommendedInsulationThicknessMm, results.recommendedInsulationTargetLayerId)}
                   className="text-amber-400 hover:text-amber-300 underline font-semibold text-[11px]"
+                  title={`Rekomendasi total ${results.recommendedInsulationThicknessMm} mm pada ${results.recommendedInsulationTargetLayerName || 'lapisan luar'}`}
                 >
-                  {lang === 'id' ? `Solusi: ${results.recommendedInsulationThicknessMm} mm` : `Need ${results.recommendedInsulationThicknessMm}mm`}
+                  {lang === 'id'
+                    ? `Solusi: Total ${results.recommendedInsulationThicknessMm} mm`
+                    : `Solution: Total ${results.recommendedInsulationThicknessMm} mm`}
                 </button>
               )}
             </div>
@@ -242,7 +245,7 @@ export const ResultsDashboard: React.FC<Props> = ({
                 {inputs.hasInsulation === false
                   ? (lang === 'id' ? 'Rekomendasi Isolasi Baru' : 'New Insulation Recom.')
                   : isDesign
-                  ? t.insulationThickness
+                  ? (lang === 'id' ? 'Rekomendasi Tebal Isolasi' : 'Recommended Thickness')
                   : (lang === 'id' ? 'Ketebalan Efektif Lapangan' : 'Field Effective Thickness')}
               </span>
               <span
@@ -253,6 +256,14 @@ export const ResultsDashboard: React.FC<Props> = ({
                 }`}
               >
                 {inputs.hasInsulation === false ? 'Bare Duct' : isDesign ? (lang === 'id' ? 'Desain' : 'Design') : (lang === 'id' ? 'Diagnosa' : 'Audit')}
+              </span>
+            </div>
+
+            {/* Target layer specification badge */}
+            <div className="mt-1.5 text-[11px] text-slate-400 flex items-center gap-1.5 flex-wrap">
+              <span className="text-slate-400">{lang === 'id' ? 'Target Lapisan:' : 'Target Layer:'}</span>
+              <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-semibold border border-slate-700/80">
+                {results.recommendedInsulationTargetLayerName || (lang === 'id' ? 'Isolasi Sisi Luar' : 'Outer Insulation')}
               </span>
             </div>
 
@@ -271,12 +282,12 @@ export const ResultsDashboard: React.FC<Props> = ({
               {isDesign && (
                 <button
                   type="button"
-                  onClick={() => onApplyRecommendedThickness(results.recommendedInsulationThicknessMm)}
-                  className="ml-auto text-[11px] text-amber-400 hover:text-amber-300 underline font-medium"
+                  onClick={() => onApplyRecommendedThickness(results.recommendedInsulationThicknessMm, results.recommendedInsulationTargetLayerId)}
+                  className="ml-auto text-[11px] px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded font-semibold transition-all active:scale-95"
                 >
                   {inputs.hasInsulation === false
-                    ? (lang === 'id' ? '+ Pasang Isolasi' : '+ Install Insulation')
-                    : (lang === 'id' ? 'Terapkan Nilai' : 'Apply')}
+                    ? (lang === 'id' ? `+ Pasang Baru ${results.recommendedInsulationThicknessMm} mm` : `+ Install ${results.recommendedInsulationThicknessMm} mm`)
+                    : (lang === 'id' ? `Terapkan Total ${results.recommendedInsulationThicknessMm} mm` : `Apply Total ${results.recommendedInsulationThicknessMm} mm`)}
                 </button>
               )}
             </div>
@@ -285,20 +296,30 @@ export const ResultsDashboard: React.FC<Props> = ({
               {inputs.hasInsulation === false ? (
                 <span className="text-amber-300/90 font-medium">
                   {lang === 'id'
-                    ? `Kondisi telanjang (0 mm). Dihitung agar suhu turun ke ≤ ${unitHelpers.formatTemp(inputs.targetOuterTempC, unitSystem)}`
-                    : `Bare condition (0 mm). Sized so surface temp drops to ≤ ${unitHelpers.formatTemp(inputs.targetOuterTempC, unitSystem)}`}
+                    ? `Kondisi telanjang (0 mm). Pasang baru ${results.recommendedInsulationThicknessMm} mm pada sisi luar agar suhu turun ke ≤ ${unitHelpers.formatTemp(inputs.targetOuterTempC, unitSystem)}`
+                    : `Bare condition (0 mm). Install new ${results.recommendedInsulationThicknessMm} mm on outer side so temp drops to ≤ ${unitHelpers.formatTemp(inputs.targetOuterTempC, unitSystem)}`}
                 </span>
               ) : isDesign ? (
-                <span>
-                  {lang === 'id'
-                    ? `Dibutuhkan agar suhu luar ≤ ${unitHelpers.formatTemp(inputs.targetOuterTempC, unitSystem)} (ASTM C1055)`
-                    : `Required for outer temp ≤ ${unitHelpers.formatTemp(inputs.targetOuterTempC, unitSystem)} (ASTM C1055)`}
-                </span>
+                <div>
+                  {results.recommendedInsulationAdditionalMm && results.recommendedInsulationAdditionalMm > 0 ? (
+                    <span className="text-amber-300/90 font-medium leading-relaxed block">
+                      {lang === 'id'
+                        ? `Tebal terpasang saat ini ${results.recommendedInsulationCurrentThicknessMm} mm. Perlu penambahan tebal +${results.recommendedInsulationAdditionalMm} mm (sehingga total menjadi ${results.recommendedInsulationThicknessMm} mm) pada ${results.recommendedInsulationTargetLayerName} agar suhu luar ≤ ${unitHelpers.formatTemp(inputs.targetOuterTempC, unitSystem)} (ASTM C1055).`
+                        : `Installed thickness is ${results.recommendedInsulationCurrentThicknessMm} mm. Needs +${results.recommendedInsulationAdditionalMm} mm addition (making total ${results.recommendedInsulationThicknessMm} mm) on ${results.recommendedInsulationTargetLayerName} so outer temp ≤ ${unitHelpers.formatTemp(inputs.targetOuterTempC, unitSystem)}.`}
+                    </span>
+                  ) : (
+                    <span className="text-emerald-400 font-medium block">
+                      {lang === 'id'
+                        ? `Tebal terpasang saat ini (${results.recommendedInsulationCurrentThicknessMm} mm) sudah mencukupi target suhu luar ≤ ${unitHelpers.formatTemp(inputs.targetOuterTempC, unitSystem)}.`
+                        : `Current installed thickness (${results.recommendedInsulationCurrentThicknessMm} mm) meets the target temp ≤ ${unitHelpers.formatTemp(inputs.targetOuterTempC, unitSystem)}.`}
+                    </span>
+                  )}
+                </div>
               ) : (
                 <span>
                   {lang === 'id'
-                    ? `Kondisi lining saat ini setara ${(results.diagnostic ? (results.diagnostic.effectiveThicknessRatio * 100).toFixed(0) : '100')}% dari desain awal`
-                    : `Current lining condition equivalent to ${(results.diagnostic ? (results.diagnostic.effectiveThicknessRatio * 100).toFixed(0) : '100')}% of original design`}
+                    ? `Kondisi lining saat ini setara ${(results.diagnostic ? (results.diagnostic.effectiveThicknessRatio * 100).toFixed(0) : '100')}% dari desain awal. Target aman: ${results.recommendedInsulationThicknessMm} mm pada ${results.recommendedInsulationTargetLayerName}.`
+                    : `Current lining condition equivalent to ${(results.diagnostic ? (results.diagnostic.effectiveThicknessRatio * 100).toFixed(0) : '100')}% of original design. Safe target: ${results.recommendedInsulationThicknessMm} mm on ${results.recommendedInsulationTargetLayerName}.`}
                 </span>
               )}
             </div>
@@ -563,15 +584,36 @@ export const ResultsDashboard: React.FC<Props> = ({
                 </p>
 
                 {results.diagnostic.isInsulationNeeded && (
-                  <div className="pt-1 flex items-center justify-between">
-                    <span className="text-slate-400 text-[11px]">{lang === 'id' ? 'Rekomendasi Tebal Baru:' : 'New Thickness Recommendation:'}</span>
-                    <button
-                      type="button"
-                      onClick={() => onApplyRecommendedThickness(results.recommendedInsulationThicknessMm)}
-                      className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded text-[11px] font-semibold transition-all active:scale-95"
-                    >
-                      {lang === 'id' ? 'Terapkan' : 'Apply'} {results.recommendedInsulationThicknessMm} mm
-                    </button>
+                  <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">{lang === 'id' ? 'Target Lapisan:' : 'Target Layer:'}</span>
+                      <span className="text-amber-300 font-medium">
+                        {results.recommendedInsulationTargetLayerName || (lang === 'id' ? 'Isolasi Sisi Luar' : 'Outer Insulation')}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">{lang === 'id' ? 'Rekomendasi Total:' : 'Total Recommendation:'}</span>
+                      <span className="text-slate-200 font-semibold">
+                        {results.recommendedInsulationThicknessMm} mm
+                        {results.recommendedInsulationAdditionalMm && results.recommendedInsulationAdditionalMm > 0
+                          ? ` (${lang === 'id' ? 'tambah' : 'add'} +${results.recommendedInsulationAdditionalMm} mm)`
+                          : ''}
+                      </span>
+                    </div>
+                    <div className="pt-1 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onApplyRecommendedThickness(
+                            results.recommendedInsulationThicknessMm,
+                            results.recommendedInsulationTargetLayerId
+                          )
+                        }
+                        className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded text-[11px] font-semibold transition-all active:scale-95"
+                      >
+                        {lang === 'id' ? 'Terapkan Total' : 'Apply Total'} {results.recommendedInsulationThicknessMm} mm
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -604,6 +646,23 @@ export const ResultsDashboard: React.FC<Props> = ({
             T_Fluida = {inputs.fluidTempC}°C | T_Ambient = {inputs.ambientTempC}°C
           </span>
         </div>
+
+        {results.refractoryOuterTempC !== undefined && (
+          <div className="mb-3 p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-800/50 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="text-slate-300">
+                Suhu Terluar Refraktori (sebelum menyentuh shell plat baja):
+              </span>
+              <strong className="text-emerald-300 font-mono text-sm">
+                {unitHelpers.formatTemp(results.refractoryOuterTempC, unitSystem)}
+              </strong>
+            </div>
+            <span className="text-[11px] text-slate-400">
+              Model h_in: <strong className="text-cyan-400 font-mono">{results.internalConvectionHi} W/m²·K</strong> ({results.internalTransferModelUsed})
+            </span>
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
