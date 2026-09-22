@@ -45,6 +45,9 @@ export default defineConfig(() => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          // Prevent the SPA navigate fallback from swallowing iframe requests
+          // for the manual PDF and serving index.html in its place.
+          navigateFallbackDenylist: [/^\/manual-guide\.pdf$/],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
