@@ -1477,6 +1477,8 @@ export default function App() {
               results={results}
               lang={lang}
               unitSystem={unitSystem}
+              ductMaterials={ductMaterials}
+              insulationMaterials={insulationMaterials}
             />
           )}
 

@@ -607,13 +607,14 @@ export const WallTemperatureProfileChart: React.FC<Props> = ({
                       <strong className="text-amber-300">{Math.round(lyr.tOuterC)}°C</strong>
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-slate-300">
-                      {/* Thermal conductivity derived from layer resistance and thickness */}
+                      {/* Thermal conductivity derived from this layer's own resistance, thickness, and mean area (not the outer surface area) */}
                       {lyr.thicknessMm > 0 && lyr.rValue > 0
-                        ? (lyr.thicknessMm / 1000 / (lyr.rValue * Math.max(0.1, results.surfaceAreaM2))).toFixed(3)
+                        ? (lyr.thicknessMm / 1000 / (lyr.rValue * Math.max(0.01, lyr.areaAvgM2))).toFixed(3)
                         : '-'}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-slate-400">
-                      {lyr.rValue.toFixed(4)}
+                      {/* Area-normalized resistance (m²·K/W) using this layer's own mean area, consistent with the film rows */}
+                      {(lyr.rValue * Math.max(0.01, lyr.areaAvgM2)).toFixed(4)}
                     </td>
                     <td className="px-3 py-2 text-center">
                       {lyr.isOverheating ? (

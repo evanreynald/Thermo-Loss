@@ -11,8 +11,8 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { TrendingDown, Info } from 'lucide-react';
-import { CalculationInputs, CalculationResults } from '../types';
-import { DEFAULT_INSULATION_MATERIALS } from '../data/materials';
+import { CalculationInputs, CalculationResults, DuctMaterial, InsulationLayer, InsulationMaterial } from '../types';
+import { calculateThermalPerformance } from '../utils/thermalCalculations';
 import { Language, UnitSystem, translations } from '../utils/translations';
 import { unitHelpers } from '../utils/unitConversion';
 
@@ -21,13 +21,24 @@ interface Props {
   results: CalculationResults;
   lang: Language;
   unitSystem: UnitSystem;
+  ductMaterials: DuctMaterial[];
+  insulationMaterials: InsulationMaterial[];
 }
 
-export const HeatLossChart: React.FC<Props> = ({ inputs, results, lang, unitSystem }) => {
+export const HeatLossChart: React.FC<Props> = ({
+  inputs,
+  results,
+  lang,
+  unitSystem,
+  ductMaterials,
+  insulationMaterials,
+}) => {
   const t = translations[lang];
   const units = unitHelpers.getUnits(unitSystem);
 
-  // Generate curve data points (0 mm to 200 mm in steps of 10 mm)
+  // Generate curve data points (0 mm to 200 mm in steps of 10 mm) by re-running the
+  // real calculation engine at each thickness, instead of a simplified duplicate model,
+  // so the curve always reconciles with the KPI cards shown alongside it.
   const chartData = useMemo(() => {
     const points: Array<{
       thicknessMm: number;
@@ -38,83 +49,66 @@ export const HeatLossChart: React.FC<Props> = ({ inputs, results, lang, unitSyst
       rawTempC: number;
     }> = [];
 
-    // Find primary insulation material
-    const primaryMatId =
-      inputs.layers.length > 0
-        ? inputs.layers[0].materialId
-        : 'calcium_silicate_block';
-    const primaryMat =
-      DEFAULT_INSULATION_MATERIALS.find((m) => m.id === primaryMatId) || DEFAULT_INSULATION_MATERIALS[0];
-    const k_insul = primaryMat.thermalConductivity;
+    // Same "primary layer" selection rule used by the recommended-thickness solver:
+    // prefer the outside insulation layer, else the first configured layer.
+    const primaryLayer = inputs.layers.find((l) => l.position === 'outside') || inputs.layers[0];
+    const primaryMat = primaryLayer
+      ? insulationMaterials.find((m) => m.id === primaryLayer.materialId) || insulationMaterials[0]
+      : insulationMaterials[0];
 
-    // Dimensions
-    const isCyl = inputs.shape === 'cylindrical' || inputs.shape === 'kiln';
-    const r_in_m = (inputs.innerDiameterMm || 600) / 2000;
-    const ductThickM = inputs.ductThicknessMm / 1000;
-    const r_duct_m = r_in_m + ductThickM;
-    const lengthM = inputs.lengthM || 10;
-    const T_fluid = inputs.fluidTempC;
-    const T_amb = inputs.ambientTempC;
-    const deltaT_total = Math.max(1, T_fluid - T_amb);
+    // In diagnostic mode, derate every insulation layer's conductivity by the same
+    // insulationRetainedFraction the engine already computed, so the "what-if thickness"
+    // curve reflects the diagnosed degraded state rather than a hypothetical clean system.
+    const retainedFraction =
+      inputs.mode === 'diagnose' && results.diagnostic
+        ? Math.max(0.02, results.diagnostic.effectiveThicknessRatio)
+        : 1;
 
-    const h_i = results.internalConvectionHi || 50;
-    const h_o = (results.externalConvectionHo || 15) + (results.radiationHr || 7);
+    const getNominalK = (layer: InsulationLayer): number => {
+      if (layer.customConductivity !== undefined && layer.customConductivity > 0) {
+        return layer.customConductivity;
+      }
+      const mat = insulationMaterials.find((m) => m.id === layer.materialId) || insulationMaterials[0];
+      return mat.thermalConductivity;
+    };
 
     // Thickness values to simulate (0 to 200mm)
     const thicknesses = [0, 10, 20, 30, 40, 50, 60, 75, 100, 125, 150, 175, 200];
 
     thicknesses.forEach((thickMm) => {
-      const thickM = thickMm / 1000;
-      let Q_W = 0;
-      let T_surface_C = T_amb;
+      const workingLayers: InsulationLayer[] =
+        inputs.layers.length > 0
+          ? inputs.layers.map((l) => {
+              const nominalK = getNominalK(l);
+              const effectiveK = retainedFraction < 1 ? nominalK / retainedFraction : nominalK;
+              return {
+                ...l,
+                thicknessMm: l.id === primaryLayer?.id ? thickMm : l.thicknessMm,
+                customConductivity: effectiveK,
+              };
+            })
+          : thickMm > 0
+          ? [
+              {
+                id: 'chart-sim-layer',
+                materialId: primaryMat.id,
+                position: 'outside',
+                thicknessMm: thickMm,
+                customConductivity: retainedFraction < 1 ? primaryMat.thermalConductivity / retainedFraction : undefined,
+              },
+            ]
+          : [];
 
-      if (isCyl) {
-        const A_in = 2 * Math.PI * r_in_m * lengthM;
-        const R_conv_in = 1 / (h_i * A_in);
+      const workingInputs: CalculationInputs = {
+        ...inputs,
+        mode: 'design',
+        hasInsulation: workingLayers.length > 0,
+        layers: workingLayers,
+      };
 
-        // Duct shell resistance
-        const k_steel = 45;
-        const R_steel = Math.log(r_duct_m / r_in_m) / (2 * Math.PI * k_steel * lengthM);
-
-        // Insulation resistance
-        let R_insul = 0;
-        const r_out_m = r_duct_m + thickM;
-        if (thickM > 0) {
-          R_insul = Math.log(r_out_m / r_duct_m) / (2 * Math.PI * k_insul * lengthM);
-        }
-
-        const A_out = 2 * Math.PI * r_out_m * lengthM;
-        const R_conv_out = 1 / (h_o * A_out);
-
-        const R_total = R_conv_in + R_steel + R_insul + R_conv_out;
-        Q_W = deltaT_total / Math.max(0.0001, R_total);
-        T_surface_C = T_amb + Q_W * R_conv_out;
-      } else {
-        // Rectangular
-        const w_m = (inputs.widthMm || 800) / 1000;
-        const h_m = (inputs.heightMm || 600) / 1000;
-        const perimeter_in = 2 * (w_m + h_m);
-        const A_in = perimeter_in * lengthM;
-        const R_conv_in = 1 / (h_i * A_in);
-
-        const k_steel = 45;
-        const R_steel = ductThickM / (k_steel * A_in);
-
-        const w_out = w_m + 2 * (ductThickM + thickM);
-        const h_out = h_m + 2 * (ductThickM + thickM);
-        const A_out = 2 * (w_out + h_out) * lengthM;
-
-        let R_insul = 0;
-        if (thickM > 0) {
-          const A_mid = (A_in + A_out) / 2;
-          R_insul = thickM / (k_insul * A_mid);
-        }
-
-        const R_conv_out = 1 / (h_o * A_out);
-        const R_total = R_conv_in + R_steel + R_insul + R_conv_out;
-        Q_W = deltaT_total / Math.max(0.0001, R_total);
-        T_surface_C = T_amb + Q_W * R_conv_out;
-      }
+      const simResult = calculateThermalPerformance(workingInputs, ductMaterials, insulationMaterials);
+      const Q_W = simResult.heatLossTotalW;
+      const T_surface_C = simResult.outerSurfaceTempC;
 
       const qKW = Q_W / 1000;
 
@@ -145,7 +139,7 @@ export const HeatLossChart: React.FC<Props> = ({ inputs, results, lang, unitSyst
     });
 
     return points;
-  }, [inputs, results, unitSystem, units.dim]);
+  }, [inputs, results, unitSystem, units.dim, ductMaterials, insulationMaterials]);
 
   const safeLimitDisplay = unitSystem === 'imperial' ? 140 : 60; // 60°C = 140°F
 

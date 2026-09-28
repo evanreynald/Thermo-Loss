@@ -101,7 +101,8 @@ export interface LayerResult {
   thicknessMm: number;
   innerRadiusMm?: number;
   outerRadiusMm?: number;
-  rValue: number; // Thermal resistance (K/W or m²·K/W)
+  rValue: number; // Total conduction thermal resistance of this layer (K/W)
+  areaAvgM2: number; // Layer's own mean surface area, for converting rValue to area-normalized m²·K/W
   tInnerC: number;
   tOuterC: number;
   maxServiceTempC: number;
